@@ -56,8 +56,49 @@ Handmatige acceptatie op beide systemen: spreek een zin uit, pauzeer middenin, h
 npm run package
 ```
 
-Het packaging-script bouwt via Tauri de macOS `.app` en maakt een DMG met `hdiutil` (zonder Finder-opmaakautomatisering); op Windows bouwt Tauri NSIS `.exe`/MSI in `src-tauri/target/release/bundle/`. De lokale build volgt de architectuur van de machine. Op een Mac kun je met `npm run package -- x86_64-apple-darwin` ook de Intel-versie bouwen nadat `rustup target add x86_64-apple-darwin` is uitgevoerd. De GitHub Actions-workflow bouwt Windows x64, macOS ARM en macOS Intel afzonderlijk en bewaart installers als artifacts; er wordt niets gepubliceerd.
+Het packaging-script bouwt via Tauri de macOS `.app` en maakt een DMG met `hdiutil` (zonder Finder-opmaakautomatisering); op Windows bouwt Tauri NSIS `.exe`/MSI in `src-tauri/target/release/bundle/`. De lokale build volgt de architectuur van de machine. Op een Mac kun je met `npm run package -- x86_64-apple-darwin` ook de Intel-versie bouwen nadat `rustup target add x86_64-apple-darwin` is uitgevoerd. De GitHub Actions-releasepipeline bouwt uitsluitend Windows x64 en macOS Apple Silicon en bewaart installers als artifacts; er wordt niets gepubliceerd.
 
 De eerste release is niet publiek ondertekend of genotariseerd. De `.gitignore` sluit dependencies, buildoutput, native helpers, databases, logs en lokale credentials uit. `package-lock.json` en `src-tauri/Cargo.lock` horen wel in Git.
+
+## Releasepipeline op GitHub starten
+
+De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v0.1.1`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
+
+1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `0.1.1` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
+
+   ```sh
+   npm version 0.1.1 --no-git-tag-version
+   ```
+
+2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `0.1.1`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
+
+   ```sh
+   npm run native
+   cargo check --manifest-path src-tauri/Cargo.toml
+   npm run build
+   npm test
+   cargo test --locked --manifest-path src-tauri/Cargo.toml
+   ```
+
+3. Commit de versieaanpassingen op `main`, maak een geannoteerde tag op die commit en push deze expliciet:
+
+   ```sh
+   git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+   git commit -m "Release v0.1.1"
+   git tag -a v0.1.1 -m "Hej v0.1.1"
+   git push origin main
+   git push origin v0.1.1
+   ```
+
+4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v0.1.1`. Na een geslaagde build download je de installers onder **Artifacts**:
+
+   | Artifact | Platform |
+   | --- | --- |
+   | `hej-windows-2022` | Windows x64 (`.exe` en `.msi`) |
+   | `hej-macos-15` | macOS Apple Silicon (`.dmg`) |
+
+De pipeline maakt build-artifacts; een GitHub Release wordt niet automatisch gepubliceerd. Wil je die publiceren, kies dan **Releases → Draft a new release**, selecteer de bestaande tag en voeg de uitgepakte installers toe. Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken.
+
+Gebruik voor een volgende versie een nieuwe tag. Bij een tijdelijke buildfout kun je de bestaande workflowrun opnieuw uitvoeren via **Re-run failed jobs**.
 
 Referenties: [Codex exec](https://developers.openai.com/codex/noninteractive), [Apple systeemspraak](https://developer.apple.com/documentation/avfoundation/speech-synthesis), [Windows systeemspraak](https://learn.microsoft.com/en-us/uwp/api/windows.media.speechsynthesis.speechsynthesizer).
