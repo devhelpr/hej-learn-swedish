@@ -1,0 +1,44 @@
+# Frontend dependencies and build output
+node_modules/
+dist/
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Rust / Tauri build output and generated speech helpers
+src-tauri/target/
+src-tauri/binaries/*
+!src-tauri/binaries/.gitkeep
+src-tauri/native/windows/bin/
+src-tauri/native/windows/obj/
+
+# Local data, logs and credentials (keep lockfiles tracked)
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+.codex/
+*.p12
+*.pfx
+*.key
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# Generated Tauri permission schemas
+src-tauri/gen/

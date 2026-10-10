@@ -1,0 +1,984 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import {
+  defaults,
+  type Lesson,
+  type NewsItem,
+  type Settings,
+  type Voice,
+  type SpeechEvent,
+  type Level,
+} from "./types";
+import { demo } from "./demo";
+import { acceptsEvent, resumeIndex, type PlayerState } from "./player";
+
+type Tab = "Nieuws" | "Oefenen" | "Bibliotheek" | "Instellingen";
+const desktop = "__TAURI_INTERNALS__" in window;
+const initialPlayer: PlayerState = {
+  requestId: null,
+  status: "idle",
+  index: 0,
+  continuous: false,
+};
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+export default function App() {
+  const [tab, setTab] = useState<Tab>("Nieuws");
+  const [settings, setSettings] = useState<Settings>(defaults);
+  const [voices, setVoices] = useState<Voice[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
+  const [lesson, setLesson] = useState<Lesson>(demo);
+  const [player, setPlayer] = useState<PlayerState>(initialPlayer);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [region, setRegion] = useState("national");
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [articleLoading, setArticleLoading] = useState(false);
+  const [selected, setSelected] = useState<NewsItem | null>(null);
+  const [text, setText] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [level, setLevel] = useState<Level>("A2");
+  const [codex, setCodex] = useState("");
+  const [settingsReady, setSettingsReady] = useState(false);
+  const playerRef = useRef(player);
+  const lessonRef = useRef(lesson);
+  const settingsRef = useRef(settings);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pausedGap = useRef(false);
+  const newsEpoch = useRef(0);
+  const articleEpoch = useRef(0);
+  const generationMounted = useRef(true);
+  playerRef.current = player;
+  lessonRef.current = lesson;
+  settingsRef.current = settings;
+  const changePlayer = useCallback((p: PlayerState) => {
+    playerRef.current = p;
+    setPlayer(p);
+  }, []);
+  const fail = useCallback((e: unknown) => setError(message(e)), []);
+  const speech = useCallback(
+    (action: string, extra: Record<string, unknown> = {}) =>
+      desktop
+        ? invoke<void>("speech_control", {
+            action,
+            id: playerRef.current.requestId ?? "",
+            text: null,
+            voiceId: null,
+            rate: null,
+            ...extra,
+          })
+        : Promise.reject(
+            "Open de desktopapp om lokale systeemspraak te gebruiken.",
+          ),
+    [],
+  );
+  const clearTimer = useCallback(() => {
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+  const stop = useCallback(async () => {
+    clearTimer();
+    pausedGap.current = false;
+    changePlayer({
+      ...playerRef.current,
+      requestId: null,
+      status: "idle",
+      continuous: false,
+    });
+    if (desktop) await speech("stop");
+  }, [clearTimer, changePlayer, speech]);
+  const persist = useCallback(
+    (index: number, completed = false) => {
+      const current = lessonRef.current;
+      if (current.id === "demo" || !desktop) return;
+      const progress = {
+        lastSentence: index,
+        completed: completed || current.progress.completed,
+      };
+      setLessons((ls) =>
+        ls.map((l) => (l.id === current.id ? { ...l, progress } : l)),
+      );
+      setLesson((l) => (l.id === current.id ? { ...l, progress } : l));
+      void invoke("save_progress", { id: current.id, progress }).catch(fail);
+    },
+    [fail],
+  );
+  const play = useCallback(
+    async (index: number, continuous: boolean) => {
+      clearTimer();
+      pausedGap.current = false;
+      const current = lessonRef.current;
+      const s = settingsRef.current;
+      const i = resumeIndex(index, current.sentences.length);
+      if (!s.voiceId) {
+        setError(
+          "Geen Zweedse stem geselecteerd. Kies een stem in Instellingen.",
+        );
+        return;
+      }
+      const id = crypto.randomUUID();
+      changePlayer({ requestId: id, status: "loading", index: i, continuous });
+      persist(i);
+      try {
+        await speech("speak", {
+          id,
+          text: current.sentences[i].sv,
+          voiceId: s.voiceId,
+          rate: s.rate,
+        });
+      } catch (e) {
+        if (playerRef.current.requestId === id) {
+          changePlayer({
+            ...playerRef.current,
+            requestId: null,
+            status: "idle",
+          });
+          fail(e);
+        }
+      }
+    },
+    [clearTimer, changePlayer, persist, speech, fail],
+  );
+  const refreshVoices = useCallback(async () => {
+    if (!desktop) return;
+    try {
+      const v = await invoke<Voice[]>("list_voices");
+      setVoices(v);
+      setSettings((s) => ({
+        ...s,
+        voiceId: v.some((x) => x.id === s.voiceId)
+          ? s.voiceId
+          : (v[0]?.id ?? ""),
+      }));
+    } catch (e) {
+      fail(e);
+    }
+  }, [fail]);
+  useEffect(() => {
+    if (!desktop) {
+      setSettingsReady(true);
+      return;
+    }
+    let disposed = false;
+    void Promise.allSettled([
+      invoke<Settings>("get_settings"),
+      invoke<Lesson[]>("list_lessons"),
+      invoke<Voice[]>("list_voices"),
+    ]).then(([saved, library, available]) => {
+      if (disposed) return;
+      if (library.status === "fulfilled") setLessons(library.value);
+      else fail(library.reason);
+      if (available.status === "fulfilled") setVoices(available.value);
+      else fail(available.reason);
+      if (saved.status === "fulfilled") {
+        const s = saved.value;
+        const v = available.status === "fulfilled" ? available.value : null;
+        setSettings({
+          ...s,
+          voiceId: v
+            ? v.some((x) => x.id === s.voiceId)
+              ? s.voiceId
+              : (v[0]?.id ?? "")
+            : s.voiceId,
+        });
+        setLevel(s.level);
+        setSettingsReady(true);
+      } else fail(saved.reason);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [fail]);
+  useEffect(() => {
+    if (!desktop || !settingsReady) return;
+    const timeout = setTimeout(() => {
+      void invoke("save_settings", { settings }).catch(fail);
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [settings, settingsReady, fail]);
+  useEffect(() => {
+    if (!desktop) return;
+    let disposed = false;
+    let unlisten: undefined | (() => void);
+    void listen<SpeechEvent>("speech", ({ payload: e }) => {
+      const p = playerRef.current;
+      if (e.kind === "error" && !e.id) {
+        clearTimer();
+        changePlayer({
+          ...p,
+          requestId: null,
+          status: "idle",
+          continuous: false,
+        });
+        fail(e.message ?? "Spraak niet beschikbaar.");
+        return;
+      }
+      if (!acceptsEvent(p, e)) return;
+      if (e.kind === "started") changePlayer({ ...p, status: "playing" });
+      if (e.kind === "paused") changePlayer({ ...p, status: "paused" });
+      if (e.kind === "error") {
+        clearTimer();
+        changePlayer({
+          ...p,
+          requestId: null,
+          status: "idle",
+          continuous: false,
+        });
+        fail(e.message ?? "Afspelen mislukt.");
+      }
+      if (e.kind === "cancelled")
+        changePlayer({
+          ...p,
+          requestId: null,
+          status: "idle",
+          continuous: false,
+        });
+      if (e.kind === "finished") {
+        const last = p.index === lessonRef.current.sentences.length - 1;
+        persist(p.index, last);
+        if (
+          !last &&
+          p.continuous &&
+          settingsRef.current.autoAdvance &&
+          p.status === "paused"
+        ) {
+          pausedGap.current = true;
+          changePlayer({ ...p, status: "paused" });
+        } else if (!last && p.continuous && settingsRef.current.autoAdvance) {
+          changePlayer({ ...p, status: "gap" });
+          timer.current = setTimeout(() => {
+            timer.current = null;
+            if (
+              playerRef.current.requestId === e.id &&
+              playerRef.current.status === "gap"
+            )
+              void play(p.index + 1, true);
+          }, settingsRef.current.gapMs);
+        } else
+          changePlayer({
+            ...p,
+            requestId: null,
+            status: "idle",
+            continuous: false,
+          });
+      }
+    })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      })
+      .catch(fail);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [changePlayer, clearTimer, fail, persist, play]);
+  useEffect(() => {
+    generationMounted.current = true;
+    return () => {
+      generationMounted.current = false;
+      clearTimer();
+      if (desktop) {
+        void invoke("speech_control", {
+          action: "stop",
+          id: "",
+          text: null,
+          voiceId: null,
+          rate: null,
+        });
+      }
+    };
+  }, [clearTimer]);
+  const navigate = async (next: Tab) => {
+    try {
+      await stop();
+      setTab(next);
+      setError("");
+      setNotice("");
+    } catch (e) {
+      fail(e);
+    }
+  };
+  const loadNews = useCallback(async () => {
+    if (!desktop) return;
+    const ticket = ++newsEpoch.current;
+    setNewsLoading(true);
+    setError("");
+    try {
+      const rows = await invoke<NewsItem[]>("fetch_news", { region });
+      if (ticket === newsEpoch.current) setNews(rows);
+    } catch (e) {
+      if (ticket === newsEpoch.current) {
+        setNews([]);
+        fail(e);
+      }
+    } finally {
+      if (ticket === newsEpoch.current) setNewsLoading(false);
+    }
+  }, [region, fail]);
+  useEffect(() => {
+    void loadNews();
+    return () => {
+      newsEpoch.current++;
+    };
+  }, [loadNews]);
+  const choose = async (item: NewsItem) => {
+    const ticket = ++articleEpoch.current;
+    setSelected(item);
+    setText("");
+    setArticleLoading(true);
+    setError("");
+    try {
+      const body = await invoke<string>("fetch_article", { url: item.url });
+      if (ticket === articleEpoch.current) setText(body);
+    } catch (e) {
+      if (ticket === articleEpoch.current) fail(e);
+    } finally {
+      if (ticket === articleEpoch.current) setArticleLoading(false);
+    }
+  };
+  const pasted = () => {
+    articleEpoch.current++;
+    setArticleLoading(false);
+    setSelected(null);
+    setText("");
+    setError("");
+  };
+  const generate = async () => {
+    setGenerating(true);
+    setError("");
+    setNotice("");
+    try {
+      await invoke("save_settings", { settings: settingsRef.current });
+      const result = await invoke<Lesson>("generate_lesson", {
+        text,
+        level,
+        source: selected?.source ?? "Zelf geplakte nieuwsbron",
+        sourceUrl: selected?.url ?? null,
+      });
+      if (!generationMounted.current) return;
+      await stop();
+      setLessons((ls) => [result, ...ls.filter((l) => l.id !== result.id)]);
+      lessonRef.current = result;
+      setLesson(result);
+      changePlayer({ ...initialPlayer });
+      setTab("Oefenen");
+      setNotice("Je oefening is opgeslagen en klaar om te beluisteren.");
+    } catch (e) {
+      fail(e);
+    } finally {
+      setGenerating(false);
+    }
+  };
+  const openLesson = async (l: Lesson) => {
+    try {
+      await stop();
+      lessonRef.current = l;
+      setLesson(l);
+      changePlayer({
+        ...initialPlayer,
+        index: resumeIndex(l.progress.lastSentence, l.sentences.length),
+      });
+      setTab("Oefenen");
+      setError("");
+    } catch (e) {
+      fail(e);
+    }
+  };
+  const toggle = async () => {
+    const p = playerRef.current;
+    try {
+      if (p.status === "playing") {
+        changePlayer({ ...p, status: "paused" });
+        await speech("pause");
+      } else if (p.status === "gap") {
+        clearTimer();
+        pausedGap.current = true;
+        changePlayer({ ...p, status: "paused" });
+      } else if (p.status === "paused") {
+        if (pausedGap.current) {
+          pausedGap.current = false;
+          await play(p.index + 1, p.continuous);
+        } else if (p.requestId) {
+          await speech("resume");
+          changePlayer({ ...p, status: "playing" });
+        }
+      } else if (p.status !== "loading") await play(p.index, true);
+    } catch (e) {
+      fail(e);
+    }
+  };
+  const sourceLink = (url: string) =>
+    void invoke("open_source", { url }).catch(fail);
+  const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
+    setSettings((s) => ({ ...s, [key]: value }));
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-symbol">h.</span>
+          <div>
+            hej<span>Zweeds, elke dag</span>
+          </div>
+        </div>
+        <p className="nav-label">JOUW LEERPLEK</p>
+        <nav>
+          {(["Nieuws", "Oefenen", "Bibliotheek", "Instellingen"] as Tab[]).map(
+            (name, i) => (
+              <button
+                key={name}
+                aria-label={name}
+                className={tab === name ? "nav-item active" : "nav-item"}
+                onClick={() => void navigate(name)}
+              >
+                <span>{["◈", "▷", "▤", "⚙"][i]}</span>
+                {name}
+              </button>
+            ),
+          )}
+        </nav>
+        <div className="sidebar-bottom">
+          <span className="local-dot" /> Lokale systeemspraak
+          <p>Luisteren kan ook offline.</p>
+        </div>
+      </aside>
+      <main>
+        <header>
+          <span>ZWEEDS LEREN MET NIEUWS</span>
+          <span className="level-badge">
+            {tab === "Oefenen" ? lesson.level : level} · Svenska
+          </span>
+        </header>
+        {!desktop && (
+          <div className="banner">
+            Dit is een browserpreview. Start <code>npm run desktop</code> voor
+            nieuws, Codex en lokale spraak.
+          </div>
+        )}
+        {error && (
+          <div className="alert" role="alert">
+            <span>{error}</span>
+            <button aria-label="Melding sluiten" onClick={() => setError("")}>
+              ×
+            </button>
+          </div>
+        )}
+        {notice && (
+          <div className="notice" role="status">
+            {notice}
+          </div>
+        )}
+        {generating && (
+          <div className="generation" role="status">
+            <span className="spinner" /> Codex maakt je {level}-oefening…{" "}
+            <button
+              onClick={() => void invoke("cancel_generation").catch(fail)}
+            >
+              Annuleren
+            </button>
+          </div>
+        )}
+        {tab === "Nieuws" && (
+          <>
+            <div className="page-title">
+              <div>
+                <p className="eyebrow">VERHALEN OM VAN TE LEREN</p>
+                <h1>Wat gebeurt er in Zweden?</h1>
+                <p>
+                  Kies een nieuwsbericht. Oefen op jouw niveau, zin voor zin.
+                </p>
+              </div>
+              <button className="quiet" onClick={() => void openLesson(demo)}>
+                Probeer een voorbeeld ↗
+              </button>
+            </div>
+            <div className="news-layout">
+              <section>
+                <div className="section-toolbar">
+                  <div className="segmented">
+                    <button
+                      className={region === "national" ? "selected" : ""}
+                      onClick={() => setRegion("national")}
+                    >
+                      Landelijk
+                    </button>
+                    <button
+                      className={region === "smaland" ? "selected" : ""}
+                      onClick={() => setRegion("smaland")}
+                    >
+                      Småland
+                    </button>
+                  </div>
+                  <button
+                    className="quiet"
+                    onClick={() => void loadNews()}
+                    disabled={newsLoading || !desktop}
+                  >
+                    {newsLoading ? "Ophalen…" : "↻ Vernieuwen"}
+                  </button>
+                </div>
+                <div className="news-list">
+                  {news.length === 0 && !newsLoading ? (
+                    <div className="empty">
+                      <span>◈</span>
+                      <h3>Je volgende verhaal begint hier</h3>
+                      <p>
+                        {desktop
+                          ? "Geen nieuws beschikbaar. Probeer vernieuwen of plak zelf een nieuwsbericht."
+                          : "Bekijk alvast de voorbeeldoefening of open de desktopapp."}
+                      </p>
+                    </div>
+                  ) : (
+                    news.map((item) => (
+                      <button
+                        className={`news-card ${selected?.id === item.id ? "chosen" : ""}`}
+                        key={item.id}
+                        onClick={() => void choose(item)}
+                        disabled={generating}
+                      >
+                        <div className="card-meta">
+                          {item.source}
+                          <span>
+                            {item.publishedAt
+                              ? new Date(item.publishedAt).toLocaleDateString(
+                                  "nl-NL",
+                                  { day: "numeric", month: "short" },
+                                )
+                              : ""}
+                          </span>
+                        </div>
+                        <h3>{item.title}</h3>
+                        <p>{item.summary}</p>
+                        <span className="card-link">
+                          Maak hier een oefening van →
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </section>
+              <section className="composer">
+                <p className="eyebrow">JOUW OEFENING</p>
+                <h2>
+                  {selected
+                    ? "Gekozen nieuwsbericht"
+                    : "Gebruik je eigen nieuws"}
+                </h2>
+                <p>
+                  {selected?.title ??
+                    "Plak een Zweedse artikeltekst. Codex maakt er een passende oefening van."}
+                </p>
+                {selected && (
+                  <div className="source-actions">
+                    <button
+                      className="quiet"
+                      onClick={() => sourceLink(selected.url)}
+                    >
+                      Lees origineel ↗
+                    </button>
+                    <button
+                      className="quiet"
+                      onClick={pasted}
+                      disabled={generating}
+                    >
+                      Andere tekst plakken
+                    </button>
+                  </div>
+                )}
+                <label htmlFor="article">Zweedse brontekst</label>
+                <textarea
+                  id="article"
+                  placeholder="Plak hier het volledige Zweedse nieuwsbericht…"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  disabled={generating || articleLoading}
+                  maxLength={60000}
+                />
+                <div className="field-meta">
+                  {articleLoading
+                    ? "Artikeltekst ophalen…"
+                    : `${words} woorden · minimaal 50`}
+                </div>
+                <label>Jouw taalniveau</label>
+                <div className="level-picker">
+                  {(["A1", "A2", "B1"] as Level[]).map((l) => (
+                    <button
+                      key={l}
+                      className={level === l ? "selected" : ""}
+                      disabled={generating}
+                      onClick={() => {
+                        setLevel(l);
+                        update("level", l);
+                      }}
+                    >
+                      <strong>{l}</strong>
+                      <span>
+                        {l === "A1"
+                          ? "Beginner"
+                          : l === "A2"
+                            ? "Basis"
+                            : "Zelfstandig"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <p className="level-help">
+                  {level === "A1"
+                    ? "Korte zinnen met alledaagse woorden."
+                    : level === "A2"
+                      ? "Eenvoudige verbanden en gangbare verleden tijd."
+                      : "Meer detail, bijzinnen en nieuwswoordenschat."}
+                </p>
+                <button
+                  className="primary wide"
+                  onClick={() => void generate()}
+                  disabled={
+                    !desktop ||
+                    !settingsReady ||
+                    generating ||
+                    articleLoading ||
+                    words < 50
+                  }
+                >
+                  Maak oefening <span>→</span>
+                </button>
+                <p className="fineprint">
+                  Ongeveer 12 zinnen · Nederlandse vertaling
+                  <br />
+                  Tekst via Codex CLI. Stem via je computer.
+                </p>
+              </section>
+            </div>
+          </>
+        )}
+        {tab === "Oefenen" && (
+          <>
+            <div className="page-title">
+              <div>
+                <p className="eyebrow">LUISTER. LEES. HERHAAL.</p>
+                <h1>{lesson.title}</h1>
+                <p>
+                  {lesson.source} · {lesson.level} · {lesson.sentences.length}{" "}
+                  zinnen{" "}
+                  {lesson.sourceUrl && (
+                    <button
+                      className="text-link"
+                      onClick={() => sourceLink(lesson.sourceUrl!)}
+                    >
+                      Origineel ↗
+                    </button>
+                  )}
+                </p>
+              </div>
+              <span className="pill">
+                {player.index + 1} / {lesson.sentences.length}
+              </span>
+            </div>
+            <section className="player-panel">
+              <div className="player-controls">
+                <button
+                  className="round"
+                  aria-label="Vorige zin"
+                  onClick={() => void play(player.index - 1, player.continuous)}
+                  disabled={player.index === 0}
+                >
+                  ←
+                </button>
+                <button
+                  className="primary play-main"
+                  onClick={() => void toggle()}
+                  disabled={player.status === "loading"}
+                >
+                  {player.status === "loading"
+                    ? "Starten…"
+                    : ["playing", "gap"].includes(player.status)
+                      ? "Ⅱ Pauzeren"
+                      : player.status === "paused"
+                        ? "▶ Hervatten"
+                        : "▶ Afspelen"}
+                </button>
+                <button
+                  className="round"
+                  aria-label="Volgende zin"
+                  onClick={() => void play(player.index + 1, player.continuous)}
+                  disabled={player.index === lesson.sentences.length - 1}
+                >
+                  →
+                </button>
+                <button
+                  className="quiet"
+                  onClick={() => void stop().catch(fail)}
+                >
+                  ■ Stoppen
+                </button>
+                <button
+                  className="quiet"
+                  onClick={() => void play(player.index, false)}
+                >
+                  ↻ Herhalen
+                </button>
+              </div>
+              <div className="play-options">
+                <label>
+                  Tempo{" "}
+                  <select
+                    value={settings.rate}
+                    onChange={(e) => update("rate", Number(e.target.value))}
+                  >
+                    {[0.5, 0.65, 0.85, 1, 1.15, 1.3].map((r) => (
+                      <option key={r} value={r}>
+                        {r === 0.85 ? "Rustig" : r === 1 ? "Normaal" : `${r}×`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.showTranslation}
+                    onChange={(e) =>
+                      update("showTranslation", e.target.checked)
+                    }
+                  />{" "}
+                  Nederlandse vertaling
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.autoAdvance}
+                    onChange={(e) => update("autoAdvance", e.target.checked)}
+                  />{" "}
+                  Automatisch doorgaan
+                </label>
+              </div>
+            </section>
+            <div className="sentences">
+              {lesson.sentences.map((pair, i) => (
+                <article
+                  key={i}
+                  className={`sentence ${i === player.index ? "current" : ""}`}
+                >
+                  <span className="sentence-number">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <p lang="sv" className="swedish">
+                      {pair.sv}
+                    </p>
+                    {settings.showTranslation && (
+                      <p lang="nl" className="dutch">
+                        {pair.nl}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    className="sentence-play"
+                    aria-label={`Zin ${i + 1} afspelen`}
+                    onClick={() => void play(i, false)}
+                  >
+                    {i === player.index && player.status === "playing"
+                      ? "♫"
+                      : "▷"}
+                  </button>
+                </article>
+              ))}
+            </div>
+            <p className="fineprint">
+              Alleen Zweeds wordt uitgesproken.{" "}
+              {lesson.id === "demo"
+                ? "Deze voorbeeldtekst wordt niet in je bibliotheek opgeslagen."
+                : "Je voortgang wordt automatisch lokaal bewaard."}
+            </p>
+          </>
+        )}
+        {tab === "Bibliotheek" && (
+          <>
+            <div className="page-title">
+              <div>
+                <p className="eyebrow">JOUW VERZAMELING</p>
+                <h1>Een beetje beter, elke keer.</h1>
+                <p>
+                  Je opgeslagen oefeningen, ook beschikbaar zonder internet.
+                </p>
+              </div>
+              <span className="pill">{lessons.length} oefeningen</span>
+            </div>
+            {lessons.length === 0 ? (
+              <div className="empty">
+                <span>▤</span>
+                <h2>Ruimte voor je eerste verhaal</h2>
+                <p>
+                  Maak een oefening vanuit Nieuws. Die verschijnt hier vanzelf.
+                </p>
+                <button
+                  className="primary"
+                  onClick={() => void navigate("Nieuws")}
+                >
+                  Kies een nieuwsbericht →
+                </button>
+              </div>
+            ) : (
+              <div className="library-grid">
+                {lessons.map((l) => (
+                  <button
+                    className="library-card"
+                    key={l.id}
+                    onClick={() => void openLesson(l)}
+                  >
+                    <div className="card-meta">
+                      <span>
+                        {l.level} · {l.sentences.length} zinnen
+                      </span>
+                      <span>
+                        {l.progress.completed ? "✓ Afgerond" : "In oefening"}
+                      </span>
+                    </div>
+                    <h2>{l.title}</h2>
+                    <p>{l.source}</p>
+                    <div className="progress-track">
+                      <span
+                        style={{
+                          width: `${l.progress.completed ? 100 : ((l.progress.lastSentence + 1) / l.sentences.length) * 100}%`,
+                        }}
+                      />
+                    </div>
+                    <span className="card-link">
+                      Hervat bij zin {l.progress.lastSentence + 1} →
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        {tab === "Instellingen" && (
+          <>
+            <div className="page-title">
+              <div>
+                <p className="eyebrow">ZO LEER JIJ HET LIEFST</p>
+                <h1>Jouw tempo. Jouw stem.</h1>
+                <p>
+                  Instellingen worden automatisch op deze computer opgeslagen.
+                </p>
+              </div>
+            </div>
+            <div className="settings-grid">
+              <section className="settings-card">
+                <h2>Lokale Zweedse stem</h2>
+                <p>
+                  Het voorlezen gebeurt op je computer, zonder AI-spraakdienst.
+                </p>
+                <label htmlFor="voice">Stem</label>
+                <select
+                  id="voice"
+                  value={settings.voiceId}
+                  onChange={(e) => update("voiceId", e.target.value)}
+                >
+                  <option value="">Kies een Zweedse stem</option>
+                  {voices.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} · {v.language}
+                    </option>
+                  ))}
+                </select>
+                <button className="quiet" onClick={() => void refreshVoices()}>
+                  ↻ Stemmen opnieuw controleren
+                </button>
+                {voices.length === 0 && (
+                  <div className="voice-help">
+                    <strong>Een Zweedse stem installeren</strong>
+                    <p>
+                      macOS: Systeeminstellingen → Toegankelijkheid → Gesproken
+                      materiaal / Lezen en spreken → Systeemstem → Beheer
+                      stemmen. Download een Zweedse stem.
+                    </p>
+                    <p>
+                      Windows: Instellingen → Tijd en taal → Spraak → Stemmen
+                      toevoegen → Zweeds. Controleer daarna opnieuw.
+                    </p>
+                  </div>
+                )}
+                <label htmlFor="gap">Pauze tussen zinnen</label>
+                <select
+                  id="gap"
+                  value={settings.gapMs}
+                  onChange={(e) => update("gapMs", Number(e.target.value))}
+                >
+                  {[0, 500, 1000, 2000, 3000, 5000].map((ms) => (
+                    <option key={ms} value={ms}>
+                      {ms / 1000} seconden
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="primary"
+                  disabled={!settings.voiceId}
+                  onClick={() => {
+                    void openLesson(demo).then(() => play(0, false));
+                  }}
+                >
+                  Test de stem
+                </button>
+              </section>
+              <section className="settings-card">
+                <h2>Codex CLI</h2>
+                <p>
+                  Codex maakt de oefentekst en Nederlandse vertaling. Gebruik
+                  een geïnstalleerde CLI met je eigen login.
+                </p>
+                <label htmlFor="codex">
+                  Uitvoerbaar pad <span>(optioneel)</span>
+                </label>
+                <input
+                  id="codex"
+                  placeholder="Automatisch zoeken"
+                  value={settings.codexPath}
+                  onChange={(e) => update("codexPath", e.target.value)}
+                />
+                <button
+                  className="quiet"
+                  disabled={!desktop}
+                  onClick={() =>
+                    void invoke<string>("detect_codex", {
+                      path: settings.codexPath,
+                    })
+                      .then(setCodex)
+                      .catch(fail)
+                  }
+                >
+                  Controleer Codex-pad
+                </button>
+                {codex && <p className="codex-path">Gevonden: {codex}</p>}
+                <div className="voice-help">
+                  <strong>Eenmalige voorbereiding</strong>
+                  <p>
+                    Installeer Codex CLI en voer <code>codex login</code> uit in
+                    een terminal. Op Windows kies je het native{" "}
+                    <code>codex.exe</code>, geen <code>.cmd</code>-bestand.
+                  </p>
+                  <p>
+                    Voor nieuwe teksten heb je internet en beschikbare
+                    Codex-capaciteit nodig. Bestaande oefeningen blijven offline
+                    werken.
+                  </p>
+                </div>
+                <p className="fineprint">
+                  Taalniveaus zijn didactische richtlijnen, geen gecertificeerde
+                  CEFR-beoordeling.
+                </p>
+              </section>
+            </div>
+          </>
+        )}
+        <footer>
+          <span>hej — kleine stappen, nieuwe woorden.</span>
+          <span>Svenska → Nederlands</span>
+        </footer>
+      </main>
+    </div>
+  );
+}
