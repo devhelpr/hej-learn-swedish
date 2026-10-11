@@ -58,7 +58,12 @@ export default function App() {
   } | null>(null);
   const generationLock = useRef(false);
   const generationCancelled = useRef(false);
-  const [level, setLevel] = useState<Level>("A2");
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customSource, setCustomSource] = useState<NewsItem | null>(null);
+  const [failedNews, setFailedNews] = useState<NewsItem | null>(null);
+  const [extractionFailed, setExtractionFailed] = useState(false);
+  const cancelRetrieval = useRef<(() => void) | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   const [codex, setCodex] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
   const playerRef = useRef(player);
@@ -67,7 +72,6 @@ export default function App() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pausedGap = useRef(false);
   const newsEpoch = useRef(0);
-  const articleEpoch = useRef(0);
   const generationMounted = useRef(true);
   playerRef.current = player;
   lessonRef.current = lesson;
@@ -205,7 +209,6 @@ export default function App() {
               : (v[0]?.id ?? "")
             : s.voiceId,
         });
-        setLevel(s.level);
         setSettingsReady(true);
       } else fail(saved.reason);
     });
@@ -331,7 +334,9 @@ export default function App() {
           (archived && lessonRef.current.id === "demo")
         ) {
           const candidate = lessons.find(
-            (l) => Boolean(l.archivedAt) === archived,
+            (l) =>
+              Boolean(l.archivedAt) === archived &&
+              l.level === settingsRef.current.level,
           );
           if (candidate) {
             lessonRef.current = candidate;
@@ -376,56 +381,69 @@ export default function App() {
       newsEpoch.current++;
     };
   }, [loadNews]);
-  const choose = async (item: NewsItem) => {
-    const ticket = ++articleEpoch.current;
-    setSelected(item);
-    setText("");
-    setArticleLoading(true);
-    setError("");
-    try {
-      const body = await invoke<string>("fetch_article", { url: item.url });
-      if (ticket === articleEpoch.current) setText(body);
-    } catch (e) {
-      if (ticket === articleEpoch.current) fail(e);
-    } finally {
-      if (ticket === articleEpoch.current) setArticleLoading(false);
-    }
-  };
-  const pasted = () => {
-    articleEpoch.current++;
-    setArticleLoading(false);
-    setSelected(null);
-    setPastedTitle("");
-    setText("");
-    setError("");
-  };
-  const generate = async () => {
-    if (generationLock.current) return;
+  useEffect(() => {
+    if (customOpen) dialog.current?.showModal();
+    else if (dialog.current?.open) dialog.current.close();
+  }, [customOpen]);
+  const generate = async (item: NewsItem | null = null) => {
+    if (generationLock.current || !settingsReady || !desktop) return;
     generationLock.current = true;
     generationCancelled.current = false;
+    const capturedSettings = { ...settingsRef.current };
+    const source = item ?? customSource;
+    const title = item?.title ?? pastedTitle.trim();
+    let body = text;
+    setSelected(item);
     setNotesTarget(null);
     setGenerating(true);
     setError("");
     setNotice("");
+    setFailedNews(null);
+    setExtractionFailed(false);
     try {
-      await invoke("save_settings", { settings: settingsRef.current });
-      const title = selected?.title ?? pastedTitle.trim();
-      if (!title) throw new Error("Geef het nieuwsbericht een titel.");
-      const identity = text;
-      let sourceGroupId = selected?.url ?? sourceIds.current.get(identity);
+      if (item) {
+        setArticleLoading(true);
+        try {
+          body = await Promise.race([
+            invoke<string>("fetch_article", { url: item.url }),
+            new Promise<never>((_, reject) => {
+              cancelRetrieval.current = () =>
+                reject(new Error("Generatie geannuleerd."));
+            }),
+          ]);
+          if (body.trim().split(/\s+/).length < 50 || body.length > 60000)
+            throw new Error(
+              "De artikeltekst is onvolledig. Plak zelf het volledige nieuwsbericht.",
+            );
+        } catch (e) {
+          if (!generationCancelled.current) setExtractionFailed(true);
+          throw e;
+        } finally {
+          cancelRetrieval.current = null;
+          setArticleLoading(false);
+        }
+      }
+      if (!title || title.length > 1000)
+        throw new Error(
+          "Geef het nieuwsbericht een titel (maximaal 1000 tekens).",
+        );
+      if (body.trim().split(/\s+/).length < 50 || body.length > 60000)
+        throw new Error("Plak minimaal 50 woorden, maximaal 60000 tekens.");
+      await invoke("save_settings", { settings: capturedSettings });
+      let sourceGroupId = source?.url ?? sourceIds.current.get(body);
       if (!sourceGroupId) {
         sourceGroupId = crypto.randomUUID();
-        sourceIds.current.set(identity, sourceGroupId);
+        sourceIds.current.set(body, sourceGroupId);
       }
-      if (generationCancelled.current)
+      if (generationCancelled.current || !generationMounted.current)
         throw new Error("Generatie geannuleerd.");
       const result = await invoke<Lesson>("generate_lesson", {
         title,
         sourceGroupId,
-        text,
-        level,
-        source: selected?.source ?? "Zelf geplakte nieuwsbron",
-        sourceUrl: selected?.url ?? null,
+        text: body,
+        level: capturedSettings.level,
+        source: source?.source ?? "Zelf geplakte nieuwsbron",
+        sourceUrl: source?.url ?? null,
       });
       if (!generationMounted.current) return;
       await stop();
@@ -434,8 +452,15 @@ export default function App() {
       setLesson(result);
       changePlayer({ ...initialPlayer });
       setTab("Oefenen");
+      if (!item) {
+        setCustomOpen(false);
+        setText("");
+        setPastedTitle("");
+        setCustomSource(null);
+      }
       setNotice("Je oefening is opgeslagen en klaar om te beluisteren.");
     } catch (e) {
+      if (item && !generationCancelled.current) setFailedNews(item);
       fail(e);
     } finally {
       generationLock.current = false;
@@ -444,7 +469,17 @@ export default function App() {
   };
   const cancelGeneration = () => {
     generationCancelled.current = true;
-    void invoke("cancel_generation").catch(fail);
+    if (cancelRetrieval.current) cancelRetrieval.current();
+    else void invoke("cancel_generation").catch(fail);
+  };
+  const pasteFailedArticle = () => {
+    if (!failedNews) return;
+    setCustomSource(failedNews);
+    setPastedTitle(failedNews.title);
+    setText("");
+    setCustomOpen(true);
+    setFailedNews(null);
+    setError("");
   };
   const addLanguageNotes = async () => {
     if (generationLock.current) return;
@@ -562,6 +597,17 @@ export default function App() {
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) =>
     setSettings((s) => ({ ...s, [key]: value }));
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const generationStatus = (
+    <div className="generation" role="status">
+      <span className="spinner" />
+      {articleLoading
+        ? "Artikeltekst ophalen…"
+        : notesTarget
+          ? `Codex maakt taalbijzonderheden (${notesTarget.level}) voor “${notesTarget.title}”…`
+          : `Codex maakt je ${settings.level}-oefening…`}
+      <button onClick={cancelGeneration}>Annuleren</button>
+    </div>
+  );
   return (
     <div className="app">
       <aside className="sidebar">
@@ -595,10 +641,36 @@ export default function App() {
       <main>
         <header>
           <span>ZWEEDS LEREN MET NIEUWS</span>
-          <span className="level-badge">
-            {tab === "Oefenen" || tab === "Archief" ? lesson.level : level} ·
-            Svenska
-          </span>
+          <div
+            className="main-toolbar"
+            role="group"
+            aria-label="Oefening maken en taalniveau"
+          >
+            <div className="toolbar-level" role="group" aria-label="Taalniveau">
+              <strong>Taalniveau</strong>
+              {(["A1", "A2", "B1"] as Level[]).map((l) => (
+                <button
+                  key={l}
+                  aria-pressed={settings.level === l}
+                  className={settings.level === l ? "selected" : ""}
+                  disabled={generating || !settingsReady}
+                  onClick={() => update("level", l)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+            <button
+              className="primary"
+              disabled={generating || !settingsReady}
+              onClick={() => {
+                setError("");
+                setCustomOpen(true);
+              }}
+            >
+              Eigen tekst toevoegen
+            </button>
+          </div>
         </header>
         {!desktop && (
           <div className="banner">
@@ -606,7 +678,7 @@ export default function App() {
             nieuws, Codex en lokale spraak.
           </div>
         )}
-        {error && (
+        {error && !customOpen && (
           <div className="alert" role="alert">
             <span>{error}</span>
             <button aria-label="Melding sluiten" onClick={() => setError("")}>
@@ -619,15 +691,96 @@ export default function App() {
             {notice}
           </div>
         )}
-        {generating && (
-          <div className="generation" role="status">
-            <span className="spinner" />{" "}
-            {notesTarget
-              ? `Codex maakt taalbijzonderheden (${notesTarget.level}) voor “${notesTarget.title}”…`
-              : `Codex maakt je ${level}-oefening…`}{" "}
-            <button onClick={cancelGeneration}>Annuleren</button>
+        {failedNews && !generating && (
+          <div className="source-actions">
+            <button className="quiet" onClick={() => void generate(failedNews)}>
+              Opnieuw proberen
+            </button>
+            {extractionFailed && (
+              <button className="quiet" onClick={pasteFailedArticle}>
+                Tekst zelf plakken
+              </button>
+            )}
           </div>
         )}
+        {generating && !customOpen && generationStatus}
+        <dialog
+          ref={dialog}
+          className="custom-dialog composer"
+          aria-labelledby="custom-heading"
+          onCancel={(e) => {
+            e.preventDefault();
+            if (!generating) setCustomOpen(false);
+          }}
+        >
+          <div className="section-toolbar">
+            <h2 id="custom-heading">Eigen tekst toevoegen</h2>
+            <button
+              className="quiet"
+              aria-label="Dialoog sluiten"
+              disabled={generating}
+              onClick={() => setCustomOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+          <p>
+            Plak een Zweedse artikeltekst. Codex maakt er een {settings.level}
+            -oefening van.
+          </p>
+          {customSource && (
+            <button
+              className="quiet"
+              onClick={() => sourceLink(customSource.url)}
+            >
+              Lees origineel ↗
+            </button>
+          )}
+          <label htmlFor="pasted-title">Titel van het nieuwsbericht</label>
+          <input
+            id="pasted-title"
+            value={pastedTitle}
+            autoFocus
+            onChange={(e) => setPastedTitle(e.target.value)}
+            maxLength={1000}
+            disabled={generating}
+            required
+            placeholder="Geef je nieuwsbericht een titel…"
+          />
+          <label htmlFor="article">Zweedse brontekst</label>
+          <textarea
+            id="article"
+            placeholder="Plak hier het volledige Zweedse nieuwsbericht…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={generating}
+            maxLength={60000}
+          />
+          <div className="field-meta">{words} woorden · minimaal 50</div>
+          <p className="level-help">
+            Taalniveau: {settings.level} · wijzig dit in het hoofdmenu.
+          </p>
+          {error && customOpen && <p role="alert">{error}</p>}
+          {generating && customOpen && generationStatus}
+          <button
+            className="primary wide"
+            onClick={() => void generate()}
+            disabled={
+              !desktop ||
+              !settingsReady ||
+              generating ||
+              words < 50 ||
+              !pastedTitle.trim()
+            }
+          >
+            Maak oefening →
+          </button>
+          <p className="fineprint">
+            Ongeveer 12 zinnen · Nederlandse vertaling
+            <br />
+            Tekst via Codex CLI. Stem via je computer.
+          </p>
+        </dialog>
         {tab === "Nieuws" && (
           <>
             <div className="page-title">
@@ -683,8 +836,8 @@ export default function App() {
                       <button
                         className={`news-card ${selected?.id === item.id ? "chosen" : ""}`}
                         key={item.id}
-                        onClick={() => void choose(item)}
-                        disabled={generating}
+                        onClick={() => void generate(item)}
+                        disabled={generating || !settingsReady}
                       >
                         <div className="card-meta">
                           {item.source}
@@ -700,120 +853,12 @@ export default function App() {
                         <h3>{item.title}</h3>
                         <p>{item.summary}</p>
                         <span className="card-link">
-                          Maak hier een oefening van →
+                          Maak {settings.level}-oefening →
                         </span>
                       </button>
                     ))
                   )}
                 </div>
-              </section>
-              <section className="composer">
-                <p className="eyebrow">JOUW OEFENING</p>
-                <h2>
-                  {selected
-                    ? "Gekozen nieuwsbericht"
-                    : "Gebruik je eigen nieuws"}
-                </h2>
-                <p>
-                  {selected?.title ??
-                    "Plak een Zweedse artikeltekst. Codex maakt er een passende oefening van."}
-                </p>
-                {selected && (
-                  <div className="source-actions">
-                    <button
-                      className="quiet"
-                      onClick={() => sourceLink(selected.url)}
-                    >
-                      Lees origineel ↗
-                    </button>
-                    <button
-                      className="quiet"
-                      onClick={pasted}
-                      disabled={generating}
-                    >
-                      Andere tekst plakken
-                    </button>
-                  </div>
-                )}
-                {!selected && (
-                  <>
-                    <label htmlFor="pasted-title">
-                      Titel van het nieuwsbericht
-                    </label>
-                    <input
-                      id="pasted-title"
-                      value={pastedTitle}
-                      onChange={(e) => setPastedTitle(e.target.value)}
-                      maxLength={1000}
-                      disabled={generating}
-                      required
-                      placeholder="Geef je nieuwsbericht een titel…"
-                    />
-                  </>
-                )}
-                <label htmlFor="article">Zweedse brontekst</label>
-                <textarea
-                  id="article"
-                  placeholder="Plak hier het volledige Zweedse nieuwsbericht…"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  disabled={generating || articleLoading}
-                  maxLength={60000}
-                />
-                <div className="field-meta">
-                  {articleLoading
-                    ? "Artikeltekst ophalen…"
-                    : `${words} woorden · minimaal 50`}
-                </div>
-                <label>Jouw taalniveau</label>
-                <div className="level-picker">
-                  {(["A1", "A2", "B1"] as Level[]).map((l) => (
-                    <button
-                      key={l}
-                      className={level === l ? "selected" : ""}
-                      disabled={generating}
-                      onClick={() => {
-                        setLevel(l);
-                        update("level", l);
-                      }}
-                    >
-                      <strong>{l}</strong>
-                      <span>
-                        {l === "A1"
-                          ? "Beginner"
-                          : l === "A2"
-                            ? "Basis"
-                            : "Zelfstandig"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                <p className="level-help">
-                  {level === "A1"
-                    ? "Korte zinnen met alledaagse woorden."
-                    : level === "A2"
-                      ? "Eenvoudige verbanden en gangbare verleden tijd."
-                      : "Meer detail, bijzinnen en nieuwswoordenschat."}
-                </p>
-                <button
-                  className="primary wide"
-                  onClick={() => void generate()}
-                  disabled={
-                    !desktop ||
-                    !settingsReady ||
-                    generating ||
-                    articleLoading ||
-                    words < 50 ||
-                    (!selected && !pastedTitle.trim())
-                  }
-                >
-                  Maak oefening <span>→</span>
-                </button>
-                <p className="fineprint">
-                  Ongeveer 12 zinnen · Nederlandse vertaling
-                  <br />
-                  Tekst via Codex CLI. Stem via je computer.
-                </p>
               </section>
             </div>
           </>
@@ -822,6 +867,7 @@ export default function App() {
           <div className="practice-layout">
             <LessonBrowser
               lessons={lessons}
+              level={settings.level}
               archived={tab === "Archief"}
               filter={filters[tab === "Archief" ? "archive" : "active"]}
               onFilter={(filter) =>

@@ -130,3 +130,24 @@ describe("lesson filtering and grouping", () => {
     ).toEqual(["3", "2"]);
   });
 });
+
+it("combines level with archival, search and date before grouping", () => {
+  const variants = [
+    make("a1", "2026-10-11", { level: "A1", title: "Regn" }),
+    make("a2", "2026-10-11", { level: "A2", title: "Regn" }),
+    make("old", "2026-09-11", { level: "A2", title: "Regn" }),
+    make("archive", "2026-10-11", {
+      level: "A2",
+      title: "Regn",
+      archivedAt: "2026-10-12",
+    }),
+  ];
+  const filter = { query: "REG", period: "month" as const, date: "2026-10" };
+  expect(filterLessons(variants, false, filter, "A2").map((l) => l.id)).toEqual(
+    ["a2"],
+  );
+  expect(filterLessons(variants, true, filter, "A2").map((l) => l.id)).toEqual([
+    "archive",
+  ]);
+  expect(filterLessons(variants, true, filter, "B1")).toEqual([]);
+});

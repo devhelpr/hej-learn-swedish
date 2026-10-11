@@ -162,6 +162,18 @@ impl Generated {
     }
 }
 #[cfg(test)]
+pub fn test_notes(excerpt: &str) -> Vec<LanguageNote> {
+    (0..5)
+        .map(|i| LanguageNote {
+            title: format!("Taalpunt {i}"),
+            sentence_index: 0,
+            excerpt: excerpt.into(),
+            explanation: format!("Nederlandse uitleg {i}"),
+        })
+        .collect()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]
@@ -237,16 +249,4 @@ mod tests {
         );
         assert!(serde_json::from_str::<Generated>(r#"{"title":"Regn","sentences":[]}"#).is_err());
     }
-}
-
-#[cfg(test)]
-pub fn test_notes(excerpt: &str) -> Vec<LanguageNote> {
-    (0..5)
-        .map(|i| LanguageNote {
-            title: format!("Taalpunt {i}"),
-            sentence_index: 0,
-            excerpt: excerpt.into(),
-            explanation: format!("Nederlandse uitleg {i}"),
-        })
-        .collect()
 }

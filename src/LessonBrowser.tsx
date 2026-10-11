@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Lesson } from "./types";
+import type { Lesson, Level } from "./types";
 import {
   emptyFilter,
   filterLessons,
@@ -11,6 +11,7 @@ import {
 interface Props {
   lessons: Lesson[];
   archived: boolean;
+  level: Level;
   filter: LessonFilter;
   onFilter: (filter: LessonFilter) => void;
   selectedId: string;
@@ -21,9 +22,14 @@ interface Props {
 export default function LessonBrowser(props: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const visible = filterLessons(props.lessons, props.archived, props.filter);
+  const visible = filterLessons(
+    props.lessons,
+    props.archived,
+    props.filter,
+    props.level,
+  );
   const total = props.lessons.filter(
-    (l) => Boolean(l.archivedAt) === props.archived,
+    (l) => Boolean(l.archivedAt) === props.archived && l.level === props.level,
   ).length;
   const toggle = (set: Set<string>, id: string) => {
     const next = new Set(set);
@@ -37,6 +43,7 @@ export default function LessonBrowser(props: Props) {
       aria-label={props.archived ? "Oefeningenarchief" : "Actieve oefeningen"}
     >
       <h2>{props.archived ? "Archief" : "Actieve oefeningen"}</h2>
+      <p className="level-help">Taalniveau: {props.level}</p>
       <label htmlFor="lesson-search">Zoeken</label>
       <input
         id="lesson-search"
@@ -106,8 +113,8 @@ export default function LessonBrowser(props: Props) {
           {total
             ? "Geen oefeningen gevonden. Pas je filters aan."
             : props.archived
-              ? "Vink een oefening af om haar hier te bewaren."
-              : "Maak een oefening vanuit Nieuws om te beginnen."}
+              ? "Geen oefeningen op dit niveau. Vink een oefening af om haar hier te bewaren."
+              : "Geen oefeningen op dit niveau. Maak een oefening vanuit Nieuws om te beginnen."}
         </p>
       )}
       <ul className="lesson-tree">

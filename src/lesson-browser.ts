@@ -1,4 +1,4 @@
-import type { Lesson } from "./types";
+import type { Lesson, Level } from "./types";
 export type Period = "all" | "day" | "week" | "month";
 export interface LessonFilter {
   query: string;
@@ -33,10 +33,12 @@ export function filterLessons(
   lessons: Lesson[],
   archived: boolean,
   filter: LessonFilter,
+  level?: Level,
 ): Lesson[] {
   const query = filter.query.trim().toLocaleLowerCase("nl-NL");
   return lessons
     .filter((lesson) => {
+      if (level && lesson.level !== level) return false;
       if (Boolean(lesson.archivedAt) !== archived) return false;
       const searchable = [
         lesson.title,

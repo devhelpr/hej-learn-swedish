@@ -19,15 +19,15 @@ Kies in Instellingen een lokale Zweedse stem. Ontbreekt deze, volg de getoonde O
 
 ## Oefenen
 
-- Kies Landelijk of Småland, selecteer een bericht, controleer de brontekst en kies A1/A2/B1.
-- Of plak zelf minstens 50 woorden Zweedse tekst (maximaal 60.000 tekens). Bij mislukte artikelherkenning verschijnt deze optie eveneens.
+- Kies A1/A2/B1 in het hoofdmenu. Selecteer daarna een bericht uit Landelijk of Småland: de app haalt de artikeltekst op, maakt direct een oefening en opent haar in Oefenen.
+- Gebruik **Eigen tekst toevoegen** in het hoofdmenu voor een dialoog met titel en Zweedse tekst (minimaal 50 woorden, maximaal 60.000 tekens). Je concept blijft behouden bij sluiten of een fout; na succesvol aanmaken wordt het gewist. Bij mislukte artikelherkenning biedt **Tekst zelf plakken** dezelfde dialoog met de oorspronkelijke titel en bron.
 - Maak een oefening: circa 12 zinparen. Generatie is annuleerbaar en stopt na drie minuten.
 - Speel de hele les of één zin af. Pauze, hervatten, stoppen, vorige/volgende en herhalen zijn beschikbaar. Onderbreken vervangt de lopende zin; oude eindmeldingen kunnen nooit de volgende zin starten.
 - Oefenen groepeert lessen als nieuwsbericht → niveauvariant → zinnen. Elke nieuwe oefening krijgt de oorspronkelijke nieuwstitel; voor geplakte tekst vul je zelf een titel in. Een ander taalniveau maakt een aparte variant, zonder bestaande lessen te overschrijven.
 - Wissel tussen **Tekst** (doorlopende oefentekst met gemarkeerde zin en Nederlandse ondertiteling) en **Losse zinnen** (zinparen met eigen afspeelknoppen). Beide gebruiken dezelfde speler en hervatpositie.
 - Het tabblad **Bijzonderheden taal** toont vijf uitlegpunten in het Nederlands, met een letterlijk Zweeds fragment, de volledige voorbeeldzin en vertaling. Nieuwe oefeningen krijgen deze uitleg meteen; bij bestaande oefeningen voeg je haar zelf toe met **Taalbijzonderheden toevoegen**. De uitleg past bij A1/A2/B1 en blijft na opslaan offline beschikbaar.
 - Vink **Gedaan** aan om één oefening naar **Archief** te verplaatsen. De laatste zin beluisteren archiveert niet automatisch. Vanuit Archief kun je blijven luisteren of de oefening terugzetten naar actieve oefeningen.
-- Oefenen en Archief hebben aparte zoek- en datumfilters. Zoek op een deel van titel, bron of Zweedse/Nederlandse tekst; filter op aanmaakdag, ISO-week (maandag–zondag) of maand in lokale tijd. Filters blijven tijdens de appsessie behouden en onderbreken het luisteren niet.
+- Het taalniveau in het hoofdmenu filtert zowel Oefenen als Archief. Wisselen van niveau behoudt de geopende oefening en het afspelen. Filters wissen behoudt het gekozen niveau. Oefenen en Archief hebben aparte zoek- en datumfilters. Zoek op een deel van titel, bron of Zweedse/Nederlandse tekst; filter op aanmaakdag, ISO-week (maandag–zondag) of maand in lokale tijd. Filters blijven tijdens de appsessie behouden en onderbreken het luisteren niet.
 - Oudere lessen blijven actief, ook als hun luistervoortgang al afgerond was. Zonder opgeslagen oorspronkelijke nieuwstitel behouden ze hun bestaande titel.
 - De meegeleverde voorbeeldtekst is fictief, duidelijk gelabeld en wordt niet bewaard.
 

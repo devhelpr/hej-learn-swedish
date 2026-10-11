@@ -27,6 +27,17 @@ vi.mock("@tauri-apps/api/event", () => ({
   ),
 }));
 Object.defineProperty(window, "__TAURI_INTERNALS__", { value: {} });
+// jsdom does not implement the native dialog lifecycle or browser focus restoration.
+let dialogOpener: HTMLElement | null = null;
+HTMLDialogElement.prototype.showModal = function () {
+  dialogOpener = document.activeElement as HTMLElement;
+  this.setAttribute("open", "");
+  this.querySelector<HTMLElement>("[autofocus]")?.focus();
+};
+HTMLDialogElement.prototype.close = function () {
+  this.removeAttribute("open");
+  dialogOpener?.focus();
+};
 const { default: App } = await import("./App");
 const calls = () =>
   backend.invoke.mock.calls
@@ -44,7 +55,7 @@ beforeEach(() => {
   backend.listener = null;
   backend.invoke.mockImplementation(async (cmd: string) => {
     if (cmd === "get_settings")
-      return { ...defaults, voiceId: "alva", gapMs: 30 };
+      return { ...defaults, level: "A1", voiceId: "alva", gapMs: 30 };
     if (cmd === "list_voices")
       return [{ id: "alva", name: "Alva", language: "sv-SE" }];
     if (cmd === "list_lessons")
@@ -316,6 +327,9 @@ describe("exercise workspace", () => {
     });
     render(<App />);
     await waitFor(() => expect(backend.listener).not.toBeNull());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Eigen tekst toevoegen" }),
+    );
     fireEvent.change(screen.getByLabelText("Zweedse brontekst"), {
       target: { value: "nyheter ".repeat(55) },
     });
@@ -332,8 +346,16 @@ describe("exercise workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /Maak oefening/ }));
     await screen.findByRole("heading", { name: "Nyheter om regn" });
     fireEvent.click(screen.getByRole("button", { name: "Nieuws" }));
-    await screen.findByLabelText("Zweedse brontekst");
-    fireEvent.click(screen.getByRole("button", { name: /A1\s*Beginner/ }));
+    fireEvent.click(screen.getByRole("button", { name: "A2" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Eigen tekst toevoegen" }),
+    );
+    fireEvent.change(screen.getByLabelText("Zweedse brontekst"), {
+      target: { value: "nyheter ".repeat(55) },
+    });
+    fireEvent.change(screen.getByLabelText("Titel van het nieuwsbericht"), {
+      target: { value: "Nyheter om regn" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /Maak oefening/ }));
     await screen.findByRole("heading", { name: "Nyheter om regn" });
     const generations = backend.invoke.mock.calls
@@ -342,9 +364,14 @@ describe("exercise workspace", () => {
     expect(generations).toHaveLength(2);
     expect(generations[0].title).toBe("Nyheter om regn");
     expect(generations[0].sourceGroupId).toBe(generations[1].sourceGroupId);
-    expect(generations[1].level).toBe("A1");
+    expect(generations[1].level).toBe("A2");
     fireEvent.click(screen.getByRole("button", { name: "Nieuws" }));
-    await screen.findByLabelText("Zweedse brontekst");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Eigen tekst toevoegen" }),
+    );
+    fireEvent.change(screen.getByLabelText("Titel van het nieuwsbericht"), {
+      target: { value: "Nyheter om regn" },
+    });
     fireEvent.change(screen.getByLabelText("Zweedse brontekst"), {
       target: { value: "andra nyheter ".repeat(30) },
     });
@@ -380,15 +407,17 @@ describe("exercise workspace", () => {
       return previous(cmd, args);
     });
     await setup();
-    expect(screen.getByText("2 van 2 oefeningen")).toBeTruthy();
+    expect(screen.getByText("1 van 1 oefeningen")).toBeTruthy();
     fireEvent.click(
       screen.getByRole("checkbox", { name: "Gedaan A1 Nieuwsbericht" }),
     );
-    await screen.findByText("1 van 1 oefeningen");
+    await screen.findByText("0 van 0 oefeningen");
+    fireEvent.click(screen.getByRole("button", { name: "A2" }));
     expect(
       screen.getByRole("checkbox", { name: "Gedaan A2 Nieuwsbericht" }),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Archief" }));
+    fireEvent.click(screen.getByRole("button", { name: "A1" }));
     await screen.findByRole("checkbox", { name: "Gedaan A1 Nieuwsbericht" });
     expect(
       screen.queryByRole("checkbox", { name: "Gedaan A2 Nieuwsbericht" }),
@@ -424,16 +453,6 @@ describe("exercise workspace", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /Småland: nya bussar/ }),
     );
-    await waitFor(() =>
-      expect(
-        (
-          screen.getByRole("button", {
-            name: /Maak oefening/,
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /Maak oefening/ }));
     await screen.findByRole("heading", { name: title });
     const args = backend.invoke.mock.calls.find(
       ([cmd]) => cmd === "generate_lesson",
@@ -696,4 +715,255 @@ describe("language notes", () => {
       ),
     ).toBe(false);
   });
+});
+
+describe("top toolbar and direct creation", () => {
+  const item = {
+    id: "n",
+    title: "Nyheter i dag",
+    source: "SVT",
+    url: "https://www.svt.se/nyheter/test",
+    summary: "Nyheter",
+    publishedAt: null,
+  };
+  function newsBackend(extra: (cmd: string, args: any) => unknown) {
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "fetch_news") return [item];
+      if (["fetch_article", "generate_lesson"].includes(cmd))
+        return extra(cmd, args);
+      return previous(cmd, args);
+    });
+  }
+  it("preserves the open exercise and speech when level and filters change", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "▶ Afspelen" }));
+    await waitFor(() => expect(calls()).toHaveLength(1));
+    const stops = backend.invoke.mock.calls.filter(
+      ([cmd, args]) => cmd === "speech_control" && args.action === "stop",
+    ).length;
+    fireEvent.click(screen.getByRole("button", { name: "B1" }));
+    expect(screen.getByText("0 van 0 oefeningen")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: demo.title })).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "zoek" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Filters wissen" }));
+    expect(
+      screen.getByRole("button", { name: "B1" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      backend.invoke.mock.calls.filter(
+        ([cmd, args]) => cmd === "speech_control" && args.action === "stop",
+      ),
+    ).toHaveLength(stops);
+  });
+  it("cancels retrieval, rejects duplicate clicks and ignores its late result", async () => {
+    let resolve!: (text: string) => void;
+    const pending = new Promise<string>((r) => {
+      resolve = r;
+    });
+    newsBackend(() => pending);
+    render(<App />);
+    const button = await screen.findByRole("button", { name: /Nyheter i dag/ });
+    await waitFor(() => expect(button).toHaveProperty("disabled", false));
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "A2" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByText("Artikeltekst ophalen…")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
+    await screen.findByRole("alert");
+    await act(async () => resolve("Nyheter ".repeat(55)));
+    expect(
+      backend.invoke.mock.calls.filter(([cmd]) => cmd === "fetch_article"),
+    ).toHaveLength(1);
+    expect(
+      backend.invoke.mock.calls.some(([cmd]) => cmd === "generate_lesson"),
+    ).toBe(false);
+    expect(button).toHaveProperty("disabled", false);
+  });
+  it("offers pasted-text fallback with original source attribution", async () => {
+    newsBackend((cmd, args) => {
+      if (cmd === "fetch_article") return "Alleen een kop";
+      return { ...demo, id: "new", title: args.title, level: args.level };
+    });
+    render(<App />);
+    const button = await screen.findByRole("button", { name: /Nyheter i dag/ });
+    await waitFor(() => expect(button).toHaveProperty("disabled", false));
+    fireEvent.click(button);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Tekst zelf plakken" }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("Titel van het nieuwsbericht")).toHaveProperty(
+      "value",
+      item.title,
+    );
+    fireEvent.change(screen.getByLabelText("Zweedse brontekst"), {
+      target: { value: "Nyheter ".repeat(55) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Maak oefening/ }));
+    await screen.findByRole("heading", { name: item.title });
+    const args = backend.invoke.mock.calls.find(
+      ([cmd]) => cmd === "generate_lesson",
+    )![1];
+    expect(args.sourceUrl).toBe(item.url);
+    expect(args.source).toBe(item.source);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+  it("preserves a modal draft on dismissal, Escape and failed generation", async () => {
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "generate_lesson") throw new Error("Codex niet beschikbaar");
+      return previous(cmd, args);
+    });
+    render(<App />);
+    const opener = screen.getByRole("button", {
+      name: "Eigen tekst toevoegen",
+    });
+    await waitFor(() => expect(opener).toHaveProperty("disabled", false));
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.change(screen.getByLabelText("Titel van het nieuwsbericht"), {
+      target: { value: "Mijn nieuws" },
+    });
+    fireEvent.change(screen.getByLabelText("Zweedse brontekst"), {
+      target: { value: "Nyheter ".repeat(55) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Dialoog sluiten" }));
+    expect(document.activeElement).toBe(opener);
+    fireEvent.click(opener);
+    expect(screen.getByLabelText("Titel van het nieuwsbericht")).toHaveProperty(
+      "value",
+      "Mijn nieuws",
+    );
+    fireEvent(
+      screen.getByRole("dialog"),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(opener);
+    fireEvent.click(screen.getByRole("button", { name: /Maak oefening/ }));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Codex niet beschikbaar",
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getByLabelText("Zweedse brontekst")).toHaveProperty(
+      "value",
+      "Nyheter ".repeat(55),
+    );
+    expect(
+      screen.getByRole("button", { name: /Maak oefening/ }),
+    ).toHaveProperty("disabled", false);
+  });
+});
+
+it("locks the custom modal during generation and preserves its draft after cancellation", async () => {
+  let reject!: (error: Error) => void;
+  const pending = new Promise((_, r) => {
+    reject = r;
+  });
+  const previous = backend.invoke.getMockImplementation()!;
+  backend.invoke.mockImplementation(async (cmd, args) => {
+    if (cmd === "generate_lesson") return pending;
+    if (cmd === "cancel_generation") {
+      reject(new Error("Generatie geannuleerd."));
+      return;
+    }
+    return previous(cmd, args);
+  });
+  render(<App />);
+  const opener = screen.getByRole("button", { name: "Eigen tekst toevoegen" });
+  await waitFor(() => expect(opener).toHaveProperty("disabled", false));
+  fireEvent.click(opener);
+  fireEvent.change(screen.getByLabelText("Titel van het nieuwsbericht"), {
+    target: { value: "Mijn nieuws" },
+  });
+  fireEvent.change(screen.getByLabelText("Zweedse brontekst"), {
+    target: { value: "Nyheter ".repeat(55) },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Maak oefening/ }));
+  await waitFor(() =>
+    expect(
+      backend.invoke.mock.calls.some(([cmd]) => cmd === "generate_lesson"),
+    ).toBe(true),
+  );
+  expect(
+    screen.getByRole("button", { name: "Dialoog sluiten" }),
+  ).toHaveProperty("disabled", true);
+  fireEvent(
+    screen.getByRole("dialog"),
+    new Event("cancel", { cancelable: true }),
+  );
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: "Annuleren",
+    }),
+  );
+  await screen.findByRole("alert");
+  expect(screen.getByLabelText("Titel van het nieuwsbericht")).toHaveProperty(
+    "value",
+    "Mijn nieuws",
+  );
+  expect(screen.getByRole("button", { name: /Maak oefening/ })).toHaveProperty(
+    "disabled",
+    false,
+  );
+});
+
+it("retries direct creation at the captured level without altering a custom draft", async () => {
+  let attempts = 0;
+  const previous = backend.invoke.getMockImplementation()!;
+  backend.invoke.mockImplementation(async (cmd, args) => {
+    if (cmd === "fetch_news")
+      return [
+        {
+          id: "n",
+          title: "Nyheter",
+          source: "SVT",
+          url: "https://www.svt.se/nyheter/test",
+          summary: "",
+          publishedAt: null,
+        },
+      ];
+    if (cmd === "fetch_article") return "Nyheter ".repeat(55);
+    if (cmd === "generate_lesson") {
+      if (++attempts === 1) throw new Error("Geen capaciteit");
+      return { ...demo, id: "new", title: args.title, level: args.level };
+    }
+    return previous(cmd, args);
+  });
+  render(<App />);
+  const opener = screen.getByRole("button", { name: "Eigen tekst toevoegen" });
+  await waitFor(() => expect(opener).toHaveProperty("disabled", false));
+  fireEvent.click(opener);
+  fireEvent.change(screen.getByLabelText("Titel van het nieuwsbericht"), {
+    target: { value: "Concept" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Dialoog sluiten" }));
+  fireEvent.click(screen.getByRole("button", { name: "B1" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /Nyheter.*Maak B1-oefening/ }),
+  );
+  await screen.findByRole("alert");
+  expect(
+    screen.queryByRole("button", { name: "Tekst zelf plakken" }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Opnieuw proberen" }));
+  await screen.findByRole("heading", { name: "Nyheter" });
+  const generations = backend.invoke.mock.calls.filter(
+    ([cmd]) => cmd === "generate_lesson",
+  );
+  expect(generations).toHaveLength(2);
+  expect(generations.every(([, args]) => args.level === "B1")).toBe(true);
+  fireEvent.click(opener);
+  expect(screen.getByLabelText("Titel van het nieuwsbericht")).toHaveProperty(
+    "value",
+    "Concept",
+  );
 });
