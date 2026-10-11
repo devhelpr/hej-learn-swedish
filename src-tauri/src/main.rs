@@ -24,8 +24,10 @@ async fn generate_lesson(
     level: Level,
     source: String,
     source_url: Option<String>,
+    title: String,
+    source_group_id: Option<String>,
 ) -> Result<Lesson, String> {
-    generation::generate(app, text, level, source, source_url).await
+    generation::generate(app, text, level, source, source_url, title, source_group_id).await
 }
 #[tauri::command]
 fn cancel_generation(s: State<Generation>) {
@@ -38,6 +40,10 @@ fn list_lessons(s: State<Store>) -> Result<Vec<Lesson>, String> {
 #[tauri::command]
 fn save_progress(s: State<Store>, id: String, progress: Progress) -> Result<(), String> {
     s.progress(&id, progress)
+}
+#[tauri::command]
+fn set_lesson_archived(s: State<Store>, id: String, archived: bool) -> Result<Lesson, String> {
+    s.archive(&id, archived)
 }
 #[tauri::command]
 fn get_settings(s: State<Store>) -> Result<Settings, String> {
@@ -102,6 +108,7 @@ fn main() {
             cancel_generation,
             list_lessons,
             save_progress,
+            set_lesson_archived,
             get_settings,
             save_settings,
             detect_codex,

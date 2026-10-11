@@ -11,9 +11,11 @@ import {
   type Level,
 } from "./types";
 import { demo } from "./demo";
+import LessonBrowser from "./LessonBrowser";
+import { emptyFilter, type LessonFilter } from "./lesson-browser";
 import { acceptsEvent, resumeIndex, type PlayerState } from "./player";
 
-type Tab = "Nieuws" | "Oefenen" | "Bibliotheek" | "Instellingen";
+type Tab = "Nieuws" | "Oefenen" | "Archief" | "Instellingen";
 const desktop = "__TAURI_INTERNALS__" in window;
 const initialPlayer: PlayerState = {
   requestId: null,
@@ -28,6 +30,16 @@ export default function App() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lesson, setLesson] = useState<Lesson>(demo);
+  const [view, setView] = useState<"text" | "sentences">("text");
+  const [filters, setFilters] = useState<{
+    active: LessonFilter;
+    archive: LessonFilter;
+  }>({ active: { ...emptyFilter }, archive: { ...emptyFilter } });
+  const [pastedTitle, setPastedTitle] = useState("");
+  const sourceIds = useRef(new Map<string, string>());
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const archiveLock = useRef(false);
+  const sentenceElement = useRef<HTMLElement | null>(null);
   const [player, setPlayer] = useState<PlayerState>(initialPlayer);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -110,6 +122,7 @@ export default function App() {
     async (index: number, continuous: boolean) => {
       clearTimer();
       pausedGap.current = false;
+      if (archiveLock.current) return;
       const current = lessonRef.current;
       const s = settingsRef.current;
       const i = resumeIndex(index, current.sentences.length);
@@ -292,9 +305,39 @@ export default function App() {
       }
     };
   }, [clearTimer]);
+  useEffect(() => {
+    if (["playing", "gap"].includes(player.status)) {
+      sentenceElement.current?.scrollIntoView?.({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [player.index, player.status, view]);
   const navigate = async (next: Tab) => {
     try {
       await stop();
+      if (next === "Oefenen" || next === "Archief") {
+        const archived = next === "Archief";
+        if (
+          Boolean(lessonRef.current.archivedAt) !== archived ||
+          (archived && lessonRef.current.id === "demo")
+        ) {
+          const candidate = lessons.find(
+            (l) => Boolean(l.archivedAt) === archived,
+          );
+          if (candidate) {
+            lessonRef.current = candidate;
+            setLesson(candidate);
+            changePlayer({
+              ...initialPlayer,
+              index: resumeIndex(
+                candidate.progress.lastSentence,
+                candidate.sentences.length,
+              ),
+            });
+          }
+        }
+      }
       setTab(next);
       setError("");
       setNotice("");
@@ -344,6 +387,7 @@ export default function App() {
     articleEpoch.current++;
     setArticleLoading(false);
     setSelected(null);
+    setPastedTitle("");
     setText("");
     setError("");
   };
@@ -353,7 +397,17 @@ export default function App() {
     setNotice("");
     try {
       await invoke("save_settings", { settings: settingsRef.current });
+      const title = selected?.title ?? pastedTitle.trim();
+      if (!title) throw new Error("Geef het nieuwsbericht een titel.");
+      const identity = text;
+      let sourceGroupId = selected?.url ?? sourceIds.current.get(identity);
+      if (!sourceGroupId) {
+        sourceGroupId = crypto.randomUUID();
+        sourceIds.current.set(identity, sourceGroupId);
+      }
       const result = await invoke<Lesson>("generate_lesson", {
+        title,
+        sourceGroupId,
         text,
         level,
         source: selected?.source ?? "Zelf geplakte nieuwsbron",
@@ -373,19 +427,54 @@ export default function App() {
       setGenerating(false);
     }
   };
-  const openLesson = async (l: Lesson) => {
+  const openLesson = async (l: Lesson, index?: number, speak = false) => {
     try {
       await stop();
       lessonRef.current = l;
       setLesson(l);
       changePlayer({
         ...initialPlayer,
-        index: resumeIndex(l.progress.lastSentence, l.sentences.length),
+        index: resumeIndex(
+          index ?? l.progress.lastSentence,
+          l.sentences.length,
+        ),
       });
-      setTab("Oefenen");
+      setTab(l.archivedAt ? "Archief" : "Oefenen");
+      if (index !== undefined) persist(resumeIndex(index, l.sentences.length));
+      if (speak) await play(index ?? l.progress.lastSentence, false);
       setError("");
     } catch (e) {
       fail(e);
+    }
+  };
+  const archiveLesson = async (target: Lesson, archived: boolean) => {
+    if (target.id === "demo" || archiveLock.current) return;
+    archiveLock.current = true;
+    setArchiveBusy(true);
+    try {
+      if (lessonRef.current.id === target.id) await stop();
+      const saved = await invoke<Lesson>("set_lesson_archived", {
+        id: target.id,
+        archived,
+      });
+      setLessons((ls) =>
+        ls.map((l) =>
+          l.id === target.id ? { ...l, archivedAt: saved.archivedAt } : l,
+        ),
+      );
+      setLesson((l) =>
+        l.id === target.id ? { ...l, archivedAt: saved.archivedAt } : l,
+      );
+      setNotice(
+        archived
+          ? "Oefening afgevinkt en naar het archief verplaatst."
+          : "Oefening teruggezet naar actieve oefeningen.",
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      archiveLock.current = false;
+      setArchiveBusy(false);
     }
   };
   const toggle = async () => {
@@ -427,7 +516,7 @@ export default function App() {
         </div>
         <p className="nav-label">JOUW LEERPLEK</p>
         <nav>
-          {(["Nieuws", "Oefenen", "Bibliotheek", "Instellingen"] as Tab[]).map(
+          {(["Nieuws", "Oefenen", "Archief", "Instellingen"] as Tab[]).map(
             (name, i) => (
               <button
                 key={name}
@@ -450,7 +539,8 @@ export default function App() {
         <header>
           <span>ZWEEDS LEREN MET NIEUWS</span>
           <span className="level-badge">
-            {tab === "Oefenen" ? lesson.level : level} · Svenska
+            {tab === "Oefenen" || tab === "Archief" ? lesson.level : level} ·
+            Svenska
           </span>
         </header>
         {!desktop && (
@@ -589,6 +679,22 @@ export default function App() {
                     </button>
                   </div>
                 )}
+                {!selected && (
+                  <>
+                    <label htmlFor="pasted-title">
+                      Titel van het nieuwsbericht
+                    </label>
+                    <input
+                      id="pasted-title"
+                      value={pastedTitle}
+                      onChange={(e) => setPastedTitle(e.target.value)}
+                      maxLength={1000}
+                      disabled={generating}
+                      required
+                      placeholder="Geef je nieuwsbericht een titel…"
+                    />
+                  </>
+                )}
                 <label htmlFor="article">Zweedse brontekst</label>
                 <textarea
                   id="article"
@@ -641,7 +747,8 @@ export default function App() {
                     !settingsReady ||
                     generating ||
                     articleLoading ||
-                    words < 50
+                    words < 50 ||
+                    (!selected && !pastedTitle.trim())
                   }
                 >
                   Maak oefening <span>→</span>
@@ -655,205 +762,271 @@ export default function App() {
             </div>
           </>
         )}
-        {tab === "Oefenen" && (
-          <>
-            <div className="page-title">
-              <div>
-                <p className="eyebrow">LUISTER. LEES. HERHAAL.</p>
-                <h1>{lesson.title}</h1>
-                <p>
-                  {lesson.source} · {lesson.level} · {lesson.sentences.length}{" "}
-                  zinnen{" "}
-                  {lesson.sourceUrl && (
-                    <button
-                      className="text-link"
-                      onClick={() => sourceLink(lesson.sourceUrl!)}
-                    >
-                      Origineel ↗
-                    </button>
-                  )}
-                </p>
-              </div>
-              <span className="pill">
-                {player.index + 1} / {lesson.sentences.length}
-              </span>
-            </div>
-            <section className="player-panel">
-              <div className="player-controls">
-                <button
-                  className="round"
-                  aria-label="Vorige zin"
-                  onClick={() => void play(player.index - 1, player.continuous)}
-                  disabled={player.index === 0}
-                >
-                  ←
-                </button>
-                <button
-                  className="primary play-main"
-                  onClick={() => void toggle()}
-                  disabled={player.status === "loading"}
-                >
-                  {player.status === "loading"
-                    ? "Starten…"
-                    : ["playing", "gap"].includes(player.status)
-                      ? "Ⅱ Pauzeren"
-                      : player.status === "paused"
-                        ? "▶ Hervatten"
-                        : "▶ Afspelen"}
-                </button>
-                <button
-                  className="round"
-                  aria-label="Volgende zin"
-                  onClick={() => void play(player.index + 1, player.continuous)}
-                  disabled={player.index === lesson.sentences.length - 1}
-                >
-                  →
-                </button>
-                <button
-                  className="quiet"
-                  onClick={() => void stop().catch(fail)}
-                >
-                  ■ Stoppen
-                </button>
-                <button
-                  className="quiet"
-                  onClick={() => void play(player.index, false)}
-                >
-                  ↻ Herhalen
-                </button>
-              </div>
-              <div className="play-options">
-                <label>
-                  Tempo{" "}
-                  <select
-                    value={settings.rate}
-                    onChange={(e) => update("rate", Number(e.target.value))}
-                  >
-                    {[0.5, 0.65, 0.85, 1, 1.15, 1.3].map((r) => (
-                      <option key={r} value={r}>
-                        {r === 0.85 ? "Rustig" : r === 1 ? "Normaal" : `${r}×`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={settings.showTranslation}
-                    onChange={(e) =>
-                      update("showTranslation", e.target.checked)
-                    }
-                  />{" "}
-                  Nederlandse vertaling
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={settings.autoAdvance}
-                    onChange={(e) => update("autoAdvance", e.target.checked)}
-                  />{" "}
-                  Automatisch doorgaan
-                </label>
-              </div>
-            </section>
-            <div className="sentences">
-              {lesson.sentences.map((pair, i) => (
-                <article
-                  key={i}
-                  className={`sentence ${i === player.index ? "current" : ""}`}
-                >
-                  <span className="sentence-number">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <div>
-                    <p lang="sv" className="swedish">
-                      {pair.sv}
-                    </p>
-                    {settings.showTranslation && (
-                      <p lang="nl" className="dutch">
-                        {pair.nl}
+        {(tab === "Oefenen" || tab === "Archief") && (
+          <div className="practice-layout">
+            <LessonBrowser
+              lessons={lessons}
+              archived={tab === "Archief"}
+              filter={filters[tab === "Archief" ? "archive" : "active"]}
+              onFilter={(filter) =>
+                setFilters((f) => ({
+                  ...f,
+                  [tab === "Archief" ? "archive" : "active"]: filter,
+                }))
+              }
+              selectedId={lesson.id}
+              onOpen={(l, index, speak) => void openLesson(l, index, speak)}
+              onArchive={(l, archived) => void archiveLesson(l, archived)}
+              busy={archiveBusy}
+            />
+            <section className="lesson-detail">
+              {Boolean(lesson.archivedAt) === (tab === "Archief") ? (
+                <>
+                  <div className="page-title">
+                    <div>
+                      <p className="eyebrow">LUISTER. LEES. HERHAAL.</p>
+                      <h1>{lesson.title}</h1>
+                      <p>
+                        {lesson.source} · {lesson.level} ·{" "}
+                        {lesson.sentences.length} zinnen{" "}
+                        {lesson.sourceUrl && (
+                          <button
+                            className="text-link"
+                            onClick={() => sourceLink(lesson.sourceUrl!)}
+                          >
+                            Origineel ↗
+                          </button>
+                        )}
                       </p>
-                    )}
+                    </div>
+                    <div className="lesson-actions">
+                      {lesson.id !== "demo" &&
+                        (lesson.archivedAt ? (
+                          <button
+                            className="quiet"
+                            disabled={archiveBusy}
+                            onClick={() => void archiveLesson(lesson, false)}
+                          >
+                            Terug naar actieve oefeningen
+                          </button>
+                        ) : (
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={false}
+                              disabled={archiveBusy}
+                              onChange={() => void archiveLesson(lesson, true)}
+                            />{" "}
+                            Gedaan
+                          </label>
+                        ))}
+                      <span className="pill">
+                        {player.index + 1} / {lesson.sentences.length}
+                      </span>
+                    </div>
                   </div>
-                  <button
-                    className="sentence-play"
-                    aria-label={`Zin ${i + 1} afspelen`}
-                    onClick={() => void play(i, false)}
-                  >
-                    {i === player.index && player.status === "playing"
-                      ? "♫"
-                      : "▷"}
-                  </button>
-                </article>
-              ))}
-            </div>
-            <p className="fineprint">
-              Alleen Zweeds wordt uitgesproken.{" "}
-              {lesson.id === "demo"
-                ? "Deze voorbeeldtekst wordt niet in je bibliotheek opgeslagen."
-                : "Je voortgang wordt automatisch lokaal bewaard."}
-            </p>
-          </>
-        )}
-        {tab === "Bibliotheek" && (
-          <>
-            <div className="page-title">
-              <div>
-                <p className="eyebrow">JOUW VERZAMELING</p>
-                <h1>Een beetje beter, elke keer.</h1>
-                <p>
-                  Je opgeslagen oefeningen, ook beschikbaar zonder internet.
-                </p>
-              </div>
-              <span className="pill">{lessons.length} oefeningen</span>
-            </div>
-            {lessons.length === 0 ? (
-              <div className="empty">
-                <span>▤</span>
-                <h2>Ruimte voor je eerste verhaal</h2>
-                <p>
-                  Maak een oefening vanuit Nieuws. Die verschijnt hier vanzelf.
-                </p>
-                <button
-                  className="primary"
-                  onClick={() => void navigate("Nieuws")}
-                >
-                  Kies een nieuwsbericht →
-                </button>
-              </div>
-            ) : (
-              <div className="library-grid">
-                {lessons.map((l) => (
-                  <button
-                    className="library-card"
-                    key={l.id}
-                    onClick={() => void openLesson(l)}
-                  >
-                    <div className="card-meta">
-                      <span>
-                        {l.level} · {l.sentences.length} zinnen
-                      </span>
-                      <span>
-                        {l.progress.completed ? "✓ Afgerond" : "In oefening"}
-                      </span>
+                  <section className="player-panel">
+                    <div className="player-controls">
+                      <button
+                        className="round"
+                        aria-label="Vorige zin"
+                        onClick={() =>
+                          void play(player.index - 1, player.continuous)
+                        }
+                        disabled={player.index === 0}
+                      >
+                        ←
+                      </button>
+                      <button
+                        className="primary play-main"
+                        onClick={() => void toggle()}
+                        disabled={player.status === "loading"}
+                      >
+                        {player.status === "loading"
+                          ? "Starten…"
+                          : ["playing", "gap"].includes(player.status)
+                            ? "Ⅱ Pauzeren"
+                            : player.status === "paused"
+                              ? "▶ Hervatten"
+                              : "▶ Afspelen"}
+                      </button>
+                      <button
+                        className="round"
+                        aria-label="Volgende zin"
+                        onClick={() =>
+                          void play(player.index + 1, player.continuous)
+                        }
+                        disabled={player.index === lesson.sentences.length - 1}
+                      >
+                        →
+                      </button>
+                      <button
+                        className="quiet"
+                        onClick={() => void stop().catch(fail)}
+                      >
+                        ■ Stoppen
+                      </button>
+                      <button
+                        className="quiet"
+                        onClick={() => void play(player.index, false)}
+                      >
+                        ↻ Herhalen
+                      </button>
                     </div>
-                    <h2>{l.title}</h2>
-                    <p>{l.source}</p>
-                    <div className="progress-track">
-                      <span
-                        style={{
-                          width: `${l.progress.completed ? 100 : ((l.progress.lastSentence + 1) / l.sentences.length) * 100}%`,
-                        }}
-                      />
+                    <div className="play-options">
+                      <label>
+                        Tempo{" "}
+                        <select
+                          value={settings.rate}
+                          onChange={(e) =>
+                            update("rate", Number(e.target.value))
+                          }
+                        >
+                          {[0.5, 0.65, 0.85, 1, 1.15, 1.3].map((r) => (
+                            <option key={r} value={r}>
+                              {r === 0.85
+                                ? "Rustig"
+                                : r === 1
+                                  ? "Normaal"
+                                  : `${r}×`}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={settings.showTranslation}
+                          onChange={(e) =>
+                            update("showTranslation", e.target.checked)
+                          }
+                        />{" "}
+                        Nederlandse vertaling
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={settings.autoAdvance}
+                          onChange={(e) =>
+                            update("autoAdvance", e.target.checked)
+                          }
+                        />{" "}
+                        Automatisch doorgaan
+                      </label>
                     </div>
-                    <span className="card-link">
-                      Hervat bij zin {l.progress.lastSentence + 1} →
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
+                  </section>
+                  <div
+                    className="segmented reading-switch"
+                    aria-label="Leesweergave"
+                  >
+                    <button
+                      className={view === "text" ? "selected" : ""}
+                      aria-pressed={view === "text"}
+                      onClick={() => setView("text")}
+                    >
+                      Tekst
+                    </button>
+                    <button
+                      className={view === "sentences" ? "selected" : ""}
+                      aria-pressed={view === "sentences"}
+                      onClick={() => setView("sentences")}
+                    >
+                      Losse zinnen
+                    </button>
+                  </div>
+                  {view === "text" ? (
+                    <article
+                      className="reading-text"
+                      aria-label="Doorlopende oefentekst"
+                    >
+                      <p lang="sv">
+                        {lesson.sentences.map((pair, i) => (
+                          <span
+                            key={i}
+                            ref={
+                              i === player.index
+                                ? (element) => {
+                                    sentenceElement.current = element;
+                                  }
+                                : undefined
+                            }
+                            className={
+                              i === player.index ? "active-sentence" : ""
+                            }
+                          >
+                            {pair.sv}{" "}
+                          </span>
+                        ))}
+                      </p>
+                      {settings.showTranslation && (
+                        <div
+                          className="reading-subtitle"
+                          aria-label="Vertaling actieve zin"
+                        >
+                          <span>Zin {player.index + 1}</span>
+                          <p lang="nl">{lesson.sentences[player.index]?.nl}</p>
+                        </div>
+                      )}
+                    </article>
+                  ) : (
+                    <div className="sentences">
+                      {lesson.sentences.map((pair, i) => (
+                        <article
+                          key={i}
+                          ref={
+                            i === player.index
+                              ? (element) => {
+                                  sentenceElement.current = element;
+                                }
+                              : undefined
+                          }
+                          className={`sentence ${i === player.index ? "current" : ""}`}
+                        >
+                          <span className="sentence-number">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <div>
+                            <p lang="sv" className="swedish">
+                              {pair.sv}
+                            </p>
+                            {settings.showTranslation && (
+                              <p lang="nl" className="dutch">
+                                {pair.nl}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            className="sentence-play"
+                            aria-label={`Zin ${i + 1} afspelen`}
+                            onClick={() => void play(i, false)}
+                          >
+                            {i === player.index && player.status === "playing"
+                              ? "♫"
+                              : "▷"}
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                  <p className="fineprint">
+                    Alleen Zweeds wordt uitgesproken.{" "}
+                    {lesson.id === "demo"
+                      ? "Deze voorbeeldtekst wordt niet als oefening opgeslagen."
+                      : "Je voortgang wordt automatisch lokaal bewaard."}
+                  </p>
+                </>
+              ) : (
+                <div className="empty">
+                  <h2>Kies een oefening</h2>
+                  <p>
+                    {tab === "Archief"
+                      ? "Selecteer een oefening uit het archief."
+                      : "Selecteer een actieve oefening of maak een nieuwe vanuit Nieuws."}
+                  </p>
+                </div>
+              )}
+            </section>
+          </div>
         )}
         {tab === "Instellingen" && (
           <>

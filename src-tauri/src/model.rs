@@ -28,6 +28,10 @@ pub struct Lesson {
     pub title: String,
     pub source: String,
     pub source_url: Option<String>,
+    #[serde(default)]
+    pub source_group_id: Option<String>,
+    #[serde(default)]
+    pub archived_at: Option<String>,
     pub level: Level,
     pub created_at: String,
     pub sentences: Vec<SentencePair>,

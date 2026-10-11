@@ -9,3 +9,11 @@
 - Windows: native .NET-spraakhulp succesvol cross-gecompileerd voor Windows x64. De complete Windows-app, installer en daadwerkelijke Windows-spraak zijn hier niet uitgevoerd: deze omgeving is macOS. `.github/workflows/desktop.yml` bevat de Windows-build en installer-artifacts, naast ARM/Intel-macOS. De workflow is lokaal voorbereid, niet naar GitHub gepusht of uitgevoerd.
 - Packaging: macOS-DMG's gebruiken een eigen `hdiutil`-stap met een Applications-snelkoppeling; Finder-opmaakautomatisering is niet nodig. Bundels zijn voor eigen gebruik, zonder publieke ondertekening/notarisatie.
 - `.gitignore`: gecontroleerd in een tijdelijk Git-repository. Dependencies, buildoutput, tijdelijke helpers, SQLite, credentials en gegenereerde Tauri-schema's worden genegeerd. Broncode, `package-lock.json` en `Cargo.lock` blijven zichtbaar.
+
+
+## Oefeningenwerkplek — 11 oktober 2026
+
+- Frontendtests controleren boomgroepering, titelovername, bronidentiteit van geplakte niveauvarianten, losse spraak, wisselen van leesweergave zonder stoppen, markering/ondertiteling, handmatig archiveren/herstellen, opslagfouten en afzonderlijke zoekfilters. Filters testen dag/week/maand, ISO-week 53, jaargrenzen en lokale zomertijdgrenzen.
+- Rust-tests controleren de oorspronkelijke nieuwstitel, compatibiliteit met oude les-JSON, archiveren/herstellen na herstart, behoud van archiefstatus bij voortgangsupdates en mislukte archiefopslag. De bestaande automatische luistervoltooiing bepaalt niet de archiefstatus.
+- Frontendproductiebuild en 22 frontendtests slagen; 16 Rust-tests slagen (2 live tests over nieuws/CLI zijn bewust overgeslagen); Clippy met `-D warnings` slaagt. De Swift-helper is opnieuw gebouwd. De native macOS-spraakcheck slaagt buiten de sandbox; binnen de sandbox annuleert ook de oorspronkelijke helper zelfs een losse uitspraak. De native code is ongewijzigd.
+- De Windows-runtime is in deze macOS-omgeving niet beschikbaar. De GUI-automatisering kan niet starten omdat de computer-use-connector `codex app-server` niet kan vinden; de nieuwe schermindeling moet nog visueel op macOS en Windows worden gecontroleerd.

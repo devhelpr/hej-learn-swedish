@@ -12,6 +12,8 @@ export interface Lesson {
   title: string;
   source: string;
   sourceUrl: string | null;
+  sourceGroupId?: string | null;
+  archivedAt?: string | null;
   level: Level;
   createdAt: string;
   sentences: SentencePair[];

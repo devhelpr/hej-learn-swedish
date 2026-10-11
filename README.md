@@ -23,12 +23,16 @@ Kies in Instellingen een lokale Zweedse stem. Ontbreekt deze, volg de getoonde O
 - Of plak zelf minstens 50 woorden Zweedse tekst (maximaal 60.000 tekens). Bij mislukte artikelherkenning verschijnt deze optie eveneens.
 - Maak een oefening: circa 12 zinparen. Generatie is annuleerbaar en stopt na drie minuten.
 - Speel de hele les of één zin af. Pauze, hervatten, stoppen, vorige/volgende en herhalen zijn beschikbaar. Onderbreken vervangt de lopende zin; oude eindmeldingen kunnen nooit de volgende zin starten.
-- De bibliotheek bewaart lessen en de laatste zin lokaal. Een ander taalniveau maakt een aparte les, zonder bestaande lessen te overschrijven.
+- Oefenen groepeert lessen als nieuwsbericht → niveauvariant → zinnen. Elke nieuwe oefening krijgt de oorspronkelijke nieuwstitel; voor geplakte tekst vul je zelf een titel in. Een ander taalniveau maakt een aparte variant, zonder bestaande lessen te overschrijven.
+- Wissel tussen **Tekst** (doorlopende oefentekst met gemarkeerde zin en Nederlandse ondertiteling) en **Losse zinnen** (zinparen met eigen afspeelknoppen). Beide gebruiken dezelfde speler en hervatpositie.
+- Vink **Gedaan** aan om één oefening naar **Archief** te verplaatsen. De laatste zin beluisteren archiveert niet automatisch. Vanuit Archief kun je blijven luisteren of de oefening terugzetten naar actieve oefeningen.
+- Oefenen en Archief hebben aparte zoek- en datumfilters. Zoek op een deel van titel, bron of Zweedse/Nederlandse tekst; filter op aanmaakdag, ISO-week (maandag–zondag) of maand in lokale tijd. Filters blijven tijdens de appsessie behouden en onderbreken het luisteren niet.
+- Oudere lessen blijven actief, ook als hun luistervoortgang al afgerond was. Zonder opgeslagen oorspronkelijke nieuwstitel behouden ze hun bestaande titel.
 - De meegeleverde voorbeeldtekst is fictief, duidelijk gelabeld en wordt niet bewaard.
 
 ## Opslag en architectuur
 
-React/TypeScript/Vite vormen de UI. Alleen Rust doet nieuwsverzoeken, CLI-processen en SQLite-opslag. `hej.sqlite` staat in de door Tauri bepaalde app-data-map (`nl.learnswedish.hej`). De originele artikeltekst blijft uitsluitend in het geopende scherm en tijdelijke CLI-invoer; de bibliotheek bewaart alleen de oefening, vertalingen, bronlink, niveau en voortgang. Brontekst wordt voor generatie aan Codex doorgegeven.
+React/TypeScript/Vite vormen de UI. Alleen Rust doet nieuwsverzoeken, CLI-processen en SQLite-opslag. `hej.sqlite` staat in de door Tauri bepaalde app-data-map (`nl.learnswedish.hej`). De originele artikeltekst blijft uitsluitend in het geopende scherm en tijdelijke CLI-invoer; de lesopslag bewaart alleen de oefening, vertalingen, bronlink, bronidentiteit, niveau, voortgang en archiefstatus. Brontekst wordt voor generatie aan Codex doorgegeven.
 
 De Swift-spraakhulp gebruikt `AVSpeechSynthesizer` op de main thread. De Windows C#-hulp gebruikt `Windows.Media.SpeechSynthesis` en NAudio voor lokale audioweergave, pauzeren en eindmeldingen. Beide spreken dezelfde JSON-lines-commandotaal via stdin/stdout. De helper wordt meegeleverd als Tauri-sidecar; de gebruiker hoeft Swift of .NET niet te installeren.
 
@@ -102,3 +106,6 @@ De pipeline maakt build-artifacts; een GitHub Release wordt niet automatisch gep
 Gebruik voor een volgende versie een nieuwe tag. Bij een tijdelijke buildfout kun je de bestaande workflowrun opnieuw uitvoeren via **Re-run failed jobs**.
 
 Referenties: [Codex exec](https://developers.openai.com/codex/noninteractive), [Apple systeemspraak](https://developer.apple.com/documentation/avfoundation/speech-synthesis), [Windows systeemspraak](https://learn.microsoft.com/en-us/uwp/api/windows.media.speechsynthesis.speechsynthesizer).
+
+
+npm run desktop

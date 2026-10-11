@@ -773,3 +773,189 @@ footer {
     gap: 14px;
   }
 }
+
+/* Oefeningen en archief delen dezelfde werkplek. */
+.practice-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+.lesson-browser {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px;
+  min-width: 0;
+}
+.lesson-browser h2 {
+  font-size: 1.15rem;
+  margin: 0 0 20px;
+}
+.lesson-browser > label,
+.date-picker {
+  display: block;
+  font-size: 0.85rem;
+  margin: 14px 0 6px;
+}
+.lesson-browser input:not([type="checkbox"]),
+.lesson-browser select {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.date-picker input {
+  margin-top: 6px;
+}
+.filter-result {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  margin: 16px 0;
+  color: #52685e;
+}
+.lesson-tree,
+.lesson-tree ul,
+.tree-sentences {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.lesson-tree > li {
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
+}
+.tree-heading {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 650;
+  width: 100%;
+  padding: 8px 0;
+  overflow-wrap: anywhere;
+}
+.tree-variant {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 4px;
+  border-radius: 8px;
+}
+.tree-variant.selected {
+  background: #edf4e9;
+}
+.tree-expand {
+  border: 0;
+  background: transparent;
+  padding: 6px;
+  flex: 0 0 auto;
+}
+.tree-open {
+  border: 0;
+  background: transparent;
+  flex: 1;
+  text-align: left;
+  font-size: 0.8rem;
+  padding: 4px;
+}
+.tree-open small {
+  display: block;
+  color: #52685e;
+  margin-top: 4px;
+}
+.tree-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.65rem;
+  gap: 3px;
+}
+.tree-sentences {
+  margin-left: 20px;
+}
+.tree-sentences li {
+  display: flex;
+  gap: 4px;
+  align-items: start;
+}
+.tree-sentence {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 7px;
+  font-size: 0.8rem;
+  flex: 1;
+}
+.tree-empty {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #52685e;
+}
+.lesson-detail {
+  min-width: 0;
+}
+.lesson-detail h1 {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  overflow-wrap: anywhere;
+}
+.lesson-detail .page-title {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.lesson-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.reading-switch {
+  margin: 24px 0 16px;
+  width: fit-content;
+}
+.reading-text {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+}
+.reading-text > p {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 4px;
+  font-size: 1.2rem;
+  line-height: 2;
+  margin: 0;
+}
+.active-sentence {
+  background: #e4efdc;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  border-radius: 4px;
+}
+.reading-subtitle {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  margin-top: 24px;
+  color: #52685e;
+}
+.reading-subtitle span {
+  font-size: 0.8rem;
+}
+.reading-subtitle p {
+  margin-bottom: 0;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+@media (max-width: 1050px) {
+  .practice-layout {
+    grid-template-columns: 1fr;
+  }
+  .reading-text {
+    padding: 20px;
+  }
+}
