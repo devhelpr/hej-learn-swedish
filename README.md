@@ -67,15 +67,15 @@ De eerste release is niet publiek ondertekend of genotariseerd. De `.gitignore` 
 
 ## Releasepipeline op GitHub starten
 
-De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v0.1.2`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
+De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v0.1.3`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
 
-1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `0.1.2` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
+1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `0.1.3` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
 
    ```sh
-   npm version 0.1.2 --no-git-tag-version
+   npm version 0.1.3 --no-git-tag-version
    ```
 
-2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `0.1.2`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
+2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `0.1.3`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
 
    ```sh
    npm run native
@@ -89,13 +89,13 @@ De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je 
 
    ```sh
    git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
-   git commit -m "Release v0.1.2"
-   git tag -a v0.1.2 -m "Hej v0.1.2"
+   git commit -m "Release v0.1.3"
+   git tag -a v0.1.3 -m "Hej v0.1.3"
    git push origin main
-   git push origin v0.1.2
+   git push origin v0.1.3
    ```
 
-4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v0.1.2`. Na een geslaagde build download je de installers onder **Artifacts**:
+4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v0.1.3`. Na een geslaagde build download je de installers onder **Artifacts**:
 
    | Artifact | Platform |
    | --- | --- |
