@@ -28,6 +28,41 @@ impl Store {
         })
         .collect()
     }
+    pub fn get(&self, id: &str) -> Result<Lesson, String> {
+        use rusqlite::OptionalExtension;
+        let c = self.0.lock().map_err(|e| e.to_string())?;
+        let data: String = c
+            .query_row("SELECT data FROM lessons WHERE id=?1", [id], |r| r.get(0))
+            .optional()
+            .map_err(|e| e.to_string())?
+            .ok_or("Oefening niet gevonden.")?;
+        serde_json::from_str(&data).map_err(|e| e.to_string())
+    }
+    pub fn save_language_notes(
+        &self,
+        id: &str,
+        notes: Vec<LanguageNote>,
+    ) -> Result<Lesson, String> {
+        use rusqlite::OptionalExtension;
+        let c = self.0.lock().map_err(|e| e.to_string())?;
+        let data: String = c
+            .query_row("SELECT data FROM lessons WHERE id=?1", [id], |r| r.get(0))
+            .optional()
+            .map_err(|e| e.to_string())?
+            .ok_or("Oefening niet gevonden.")?;
+        let mut lesson: Lesson = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        validate_language_notes(&notes, &lesson.sentences)?;
+        lesson.language_notes = notes;
+        c.execute(
+            "UPDATE lessons SET data=?1 WHERE id=?2",
+            params![
+                serde_json::to_string(&lesson).map_err(|e| e.to_string())?,
+                id
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(lesson)
+    }
     pub fn progress(&self, id: &str, p: Progress) -> Result<(), String> {
         use rusqlite::OptionalExtension;
         let c = self.0.lock().map_err(|e| e.to_string())?;
@@ -122,6 +157,7 @@ mod tests {
                 sv: "Hej".into(),
                 nl: "Hallo".into(),
             }],
+            language_notes: vec![],
             progress: Progress::default(),
         };
         s.save(&l).unwrap();
@@ -199,5 +235,69 @@ mod tests {
         let lesson = store.list().unwrap().remove(0);
         assert!(lesson.archived_at.is_none());
         assert_eq!(lesson.progress.last_sentence, 1);
+    }
+    #[test]
+    fn notes_survive_restart_and_preserve_latest_progress_and_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.sqlite");
+        {
+            let store = Store::open(&path).unwrap();
+            store.save(&legacy_lesson()).unwrap();
+            let before_generation = store.get("legacy").unwrap();
+            assert!(before_generation.language_notes.is_empty());
+            store
+                .progress(
+                    "legacy",
+                    Progress {
+                        last_sentence: 0,
+                        completed: false,
+                    },
+                )
+                .unwrap();
+            store.archive("legacy", true).unwrap();
+            let updated = store
+                .save_language_notes("legacy", test_notes("Hej"))
+                .unwrap();
+            assert_eq!(updated.progress.last_sentence, 0);
+            assert!(updated.archived_at.is_some());
+            assert_eq!(updated.title, before_generation.title);
+            assert_eq!(updated.created_at, before_generation.created_at);
+            assert_eq!(updated.level, before_generation.level);
+            assert_eq!(updated.sentences[1].sv, before_generation.sentences[1].sv);
+        }
+        let store = Store::open(&path).unwrap();
+        let lesson = store.get("legacy").unwrap();
+        assert_eq!(lesson.language_notes.len(), 5);
+        store.archive("legacy", false).unwrap();
+        store
+            .progress(
+                "legacy",
+                Progress {
+                    last_sentence: 1,
+                    completed: false,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store.get("legacy").unwrap().language_notes,
+            lesson.language_notes
+        );
+    }
+    #[test]
+    fn invalid_notes_and_failed_note_write_leave_lesson_unchanged() {
+        let store = Store::init(Connection::open_in_memory().unwrap()).unwrap();
+        store.save(&legacy_lesson()).unwrap();
+        assert!(store
+            .save_language_notes("legacy", test_notes("Niet in de tekst"))
+            .is_err());
+        assert!(store.get("legacy").unwrap().language_notes.is_empty());
+        store.0.lock().unwrap().execute_batch("CREATE TRIGGER reject_notes BEFORE UPDATE ON lessons BEGIN SELECT RAISE(ABORT, 'read-only'); END;").unwrap();
+        assert!(store
+            .save_language_notes("legacy", test_notes("Hej"))
+            .is_err());
+        assert!(store.get("legacy").unwrap().language_notes.is_empty());
+        assert!(store
+            .save_language_notes("missing", test_notes("Hej"))
+            .is_err());
     }
 }

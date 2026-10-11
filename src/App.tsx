@@ -11,6 +11,7 @@ import {
   type Level,
 } from "./types";
 import { demo } from "./demo";
+import LanguageNotes from "./LanguageNotes";
 import LessonBrowser from "./LessonBrowser";
 import { emptyFilter, type LessonFilter } from "./lesson-browser";
 import { acceptsEvent, resumeIndex, type PlayerState } from "./player";
@@ -30,7 +31,7 @@ export default function App() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lesson, setLesson] = useState<Lesson>(demo);
-  const [view, setView] = useState<"text" | "sentences">("text");
+  const [view, setView] = useState<"text" | "sentences" | "language">("text");
   const [filters, setFilters] = useState<{
     active: LessonFilter;
     archive: LessonFilter;
@@ -50,6 +51,13 @@ export default function App() {
   const [selected, setSelected] = useState<NewsItem | null>(null);
   const [text, setText] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [notesTarget, setNotesTarget] = useState<{
+    id: string;
+    title: string;
+    level: Level;
+  } | null>(null);
+  const generationLock = useRef(false);
+  const generationCancelled = useRef(false);
   const [level, setLevel] = useState<Level>("A2");
   const [codex, setCodex] = useState("");
   const [settingsReady, setSettingsReady] = useState(false);
@@ -392,6 +400,10 @@ export default function App() {
     setError("");
   };
   const generate = async () => {
+    if (generationLock.current) return;
+    generationLock.current = true;
+    generationCancelled.current = false;
+    setNotesTarget(null);
     setGenerating(true);
     setError("");
     setNotice("");
@@ -405,6 +417,8 @@ export default function App() {
         sourceGroupId = crypto.randomUUID();
         sourceIds.current.set(identity, sourceGroupId);
       }
+      if (generationCancelled.current)
+        throw new Error("Generatie geannuleerd.");
       const result = await invoke<Lesson>("generate_lesson", {
         title,
         sourceGroupId,
@@ -424,7 +438,50 @@ export default function App() {
     } catch (e) {
       fail(e);
     } finally {
+      generationLock.current = false;
       setGenerating(false);
+    }
+  };
+  const cancelGeneration = () => {
+    generationCancelled.current = true;
+    void invoke("cancel_generation").catch(fail);
+  };
+  const addLanguageNotes = async () => {
+    if (generationLock.current) return;
+    const target = lessonRef.current;
+    if (target.id === "demo" || target.languageNotes?.length) return;
+    generationLock.current = true;
+    generationCancelled.current = false;
+    setGenerating(true);
+    setNotesTarget({ id: target.id, title: target.title, level: target.level });
+    setError("");
+    setNotice("");
+    try {
+      await invoke("save_settings", { settings: settingsRef.current });
+      if (generationCancelled.current)
+        throw new Error("Generatie geannuleerd.");
+      const result = await invoke<Lesson>("generate_language_notes", {
+        id: target.id,
+      });
+      if (!generationMounted.current) return;
+      // Only merge notes: playback and archive changes may have happened meanwhile.
+      setLessons((ls) =>
+        ls.map((l) =>
+          l.id === target.id
+            ? { ...l, languageNotes: result.languageNotes }
+            : l,
+        ),
+      );
+      setLesson((l) =>
+        l.id === target.id ? { ...l, languageNotes: result.languageNotes } : l,
+      );
+      setNotice(`Vijf taalbijzonderheden opgeslagen voor “${target.title}”.`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      generationLock.current = false;
+      setGenerating(false);
+      setNotesTarget(null);
     }
   };
   const openLesson = async (l: Lesson, index?: number, speak = false) => {
@@ -564,12 +621,11 @@ export default function App() {
         )}
         {generating && (
           <div className="generation" role="status">
-            <span className="spinner" /> Codex maakt je {level}-oefening…{" "}
-            <button
-              onClick={() => void invoke("cancel_generation").catch(fail)}
-            >
-              Annuleren
-            </button>
+            <span className="spinner" />{" "}
+            {notesTarget
+              ? `Codex maakt taalbijzonderheden (${notesTarget.level}) voor “${notesTarget.title}”…`
+              : `Codex maakt je ${level}-oefening…`}{" "}
+            <button onClick={cancelGeneration}>Annuleren</button>
           </div>
         )}
         {tab === "Nieuws" && (
@@ -933,8 +989,23 @@ export default function App() {
                     >
                       Losse zinnen
                     </button>
+                    <button
+                      className={view === "language" ? "selected" : ""}
+                      aria-pressed={view === "language"}
+                      onClick={() => setView("language")}
+                    >
+                      Bijzonderheden taal
+                    </button>
                   </div>
-                  {view === "text" ? (
+                  {view === "language" ? (
+                    <LanguageNotes
+                      lesson={lesson}
+                      generating={generating}
+                      loading={generating && notesTarget?.id === lesson.id}
+                      canGenerate={desktop && settingsReady}
+                      onGenerate={() => void addLanguageNotes()}
+                    />
+                  ) : view === "text" ? (
                     <article
                       className="reading-text"
                       aria-label="Doorlopende oefentekst"

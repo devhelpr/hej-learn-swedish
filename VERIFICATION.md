@@ -17,3 +17,12 @@
 - Rust-tests controleren de oorspronkelijke nieuwstitel, compatibiliteit met oude les-JSON, archiveren/herstellen na herstart, behoud van archiefstatus bij voortgangsupdates en mislukte archiefopslag. De bestaande automatische luistervoltooiing bepaalt niet de archiefstatus.
 - Frontendproductiebuild en 22 frontendtests slagen; 16 Rust-tests slagen (2 live tests over nieuws/CLI zijn bewust overgeslagen); Clippy met `-D warnings` slaagt. De Swift-helper is opnieuw gebouwd. De native macOS-spraakcheck slaagt buiten de sandbox; binnen de sandbox annuleert ook de oorspronkelijke helper zelfs een losse uitspraak. De native code is ongewijzigd.
 - De Windows-runtime is in deze macOS-omgeving niet beschikbaar. De GUI-automatisering kan niet starten omdat de computer-use-connector `codex app-server` niet kan vinden; de nieuwe schermindeling moet nog visueel op macOS en Windows worden gecontroleerd.
+
+
+## Bijzonderheden taal — 11 oktober 2026
+
+- Het nieuwe tabblad toont vijf niveaugebonden Nederlandse uitlegpunten, met een gemarkeerd letterlijk Zweeds fragment en de bestaande zinvertaling. De demo heeft vijf vaste A1-punten.
+- 29 frontendtests slagen, inclusief wisselen tijdens afspelen, toevoegen aan actieve/gearchiveerde lessen, behoud van nieuwere voortgang en archiefstatus, handmatig opnieuw proberen, annulering vóór en tijdens de CLI-aanvraag en offline openen zonder generatie.
+- 23 reguliere Rust-tests slagen, inclusief exact vijf punten, ongeldige/verzonnen fragmenten, lege/duplicerende punten, dezelfde generatieslot voor lessen en uitleg, annulering/timeout, opslagfouten en herstart met oude lesgegevens. Drie live tests worden standaard overgeslagen.
+- Echte Codex CLI-controle op A1/A2/B1 geslaagd met fictieve busnieuwsteksten: A1 maakt een nieuwe oefening inclusief uitleg, A2/B1 vullen bestaande zinparen aan. Alle vijftien punten zijn nagekeken op context, niveau en taalkundige juistheid. De voorbeelden bevatten basiswoordenschat/vormen op A1, verleden tijd/verbindingen op A2 en bijzinnen/passief/nieuwsuitdrukkingen op B1. QA-uitvoer staat uitsluitend in de genegeerde `src-tauri/target/qa/language-*.json`.
+- Frontendproductiebuild en Clippy met `-D warnings` slagen. De native spraakhulp is ongewijzigd; dit tabblad genereert en bewaart alleen tekst.

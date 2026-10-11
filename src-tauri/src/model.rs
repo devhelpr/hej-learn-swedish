@@ -35,8 +35,58 @@ pub struct Lesson {
     pub level: Level,
     pub created_at: String,
     pub sentences: Vec<SentencePair>,
+    #[serde(default)]
+    pub language_notes: Vec<LanguageNote>,
     pub progress: Progress,
 }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LanguageNote {
+    pub title: String,
+    pub sentence_index: usize,
+    pub excerpt: String,
+    pub explanation: String,
+}
+pub fn validate_language_notes(
+    notes: &[LanguageNote],
+    sentences: &[SentencePair],
+) -> Result<(), String> {
+    if notes.len() != 5 {
+        return Err("Codex moet precies vijf taalbijzonderheden leveren. Probeer opnieuw.".into());
+    }
+    let mut seen = std::collections::HashSet::new();
+    for note in notes {
+        if note.title.trim().is_empty()
+            || note.title.chars().count() > 120
+            || note.explanation.trim().is_empty()
+            || note.explanation.chars().count() > 2000
+            || note.excerpt.trim().is_empty()
+            || note.excerpt.chars().count() > 1500
+        {
+            return Err("Codex leverde een leeg of te lang taalpunt. Probeer opnieuw.".into());
+        }
+        if !sentences
+            .get(note.sentence_index)
+            .is_some_and(|sentence| sentence.sv.contains(&note.excerpt))
+        {
+            return Err("Een taalpunt verwijst niet naar een letterlijk fragment uit de oefening. Probeer opnieuw.".into());
+        }
+        if !seen.insert((
+            note.sentence_index,
+            note.excerpt.trim().to_lowercase(),
+            note.title.trim().to_lowercase(),
+        )) {
+            return Err("Codex leverde dubbele taalpunten. Probeer opnieuw.".into());
+        }
+    }
+    Ok(())
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GeneratedNotes {
+    pub language_notes: Vec<LanguageNote>,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Progress {
@@ -68,10 +118,11 @@ impl Default for Settings {
     }
 }
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Generated {
     pub title: String,
     pub sentences: Vec<SentencePair>,
+    pub language_notes: Vec<LanguageNote>,
 }
 impl Generated {
     pub fn validate_level(&self, level: &Level) -> Result<(), String> {
@@ -107,7 +158,7 @@ impl Generated {
         }) {
             return Err("Codex leverde een leeg of te lang zinpaar.".into());
         }
-        Ok(())
+        validate_language_notes(&self.language_notes, &self.sentences)
     }
 }
 #[cfg(test)]
@@ -117,6 +168,7 @@ mod tests {
     fn rejects_incomplete_output() {
         let g = Generated {
             title: "Titel".into(),
+            language_notes: vec![],
             sentences: vec![],
         };
         assert!(g.validate().is_err());
@@ -128,6 +180,7 @@ mod tests {
     fn rejects_sentences_too_long_for_selected_level() {
         let g = Generated {
             title: "Nyheter".into(),
+            language_notes: test_notes("Det regnar."),
             sentences: vec![SentencePair {
                 sv: vec!["ord"; 13].join(" "),
                 nl: "Vertaling".into(),
@@ -140,6 +193,7 @@ mod tests {
     fn validates_pairs() {
         let mut g = Generated {
             title: "Nyheter".into(),
+            language_notes: test_notes("Det regnar."),
             sentences: (0..12)
                 .map(|_| SentencePair {
                     sv: "Det regnar.".into(),
@@ -151,4 +205,48 @@ mod tests {
         g.sentences[0].nl.clear();
         assert!(g.validate().is_err());
     }
+    #[test]
+    fn rejects_invalid_or_duplicate_language_notes() {
+        let sentences = vec![SentencePair {
+            sv: "Det regnar.".into(),
+            nl: "Het regent.".into(),
+        }];
+        let valid = test_notes("regnar");
+        validate_language_notes(&valid, &sentences).unwrap();
+        assert!(validate_language_notes(&valid[..4], &sentences).is_err());
+        let mut notes = valid.clone();
+        notes[0].sentence_index = 99;
+        assert!(validate_language_notes(&notes, &sentences).is_err());
+        notes = valid.clone();
+        notes[0].excerpt = "snöar".into();
+        assert!(validate_language_notes(&notes, &sentences).is_err());
+        notes = valid.clone();
+        notes[0].explanation = "  ".into();
+        assert!(validate_language_notes(&notes, &sentences).is_err());
+        notes = valid.clone();
+        notes[0].title.clear();
+        assert!(validate_language_notes(&notes, &sentences).is_err());
+        notes = valid.clone();
+        notes[0].excerpt.clear();
+        assert!(validate_language_notes(&notes, &sentences).is_err());
+        notes = valid.clone();
+        notes[1] = notes[0].clone();
+        assert!(validate_language_notes(&notes, &sentences).is_err());
+        assert!(
+            serde_json::from_str::<GeneratedNotes>(r#"{"languageNotes":[],"extra":true}"#).is_err()
+        );
+        assert!(serde_json::from_str::<Generated>(r#"{"title":"Regn","sentences":[]}"#).is_err());
+    }
+}
+
+#[cfg(test)]
+pub fn test_notes(excerpt: &str) -> Vec<LanguageNote> {
+    (0..5)
+        .map(|i| LanguageNote {
+            title: format!("Taalpunt {i}"),
+            sentence_index: 0,
+            excerpt: excerpt.into(),
+            explanation: format!("Nederlandse uitleg {i}"),
+        })
+        .collect()
 }

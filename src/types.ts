@@ -3,6 +3,12 @@ export interface SentencePair {
   sv: string;
   nl: string;
 }
+export interface LanguageNote {
+  title: string;
+  sentenceIndex: number;
+  excerpt: string;
+  explanation: string;
+}
 export interface Progress {
   lastSentence: number;
   completed: boolean;
@@ -17,6 +23,7 @@ export interface Lesson {
   level: Level;
   createdAt: string;
   sentences: SentencePair[];
+  languageNotes?: LanguageNote[];
   progress: Progress;
 }
 export interface NewsItem {
