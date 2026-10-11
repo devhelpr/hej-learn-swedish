@@ -61,7 +61,7 @@ Handmatige acceptatie op beide systemen: spreek een zin uit, pauzeer middenin, h
 npm run package
 ```
 
-Het packaging-script bouwt via Tauri de macOS `.app` en maakt een DMG met `hdiutil` (zonder Finder-opmaakautomatisering); op Windows bouwt Tauri NSIS `.exe`/MSI in `src-tauri/target/release/bundle/`. De lokale build volgt de architectuur van de machine. Op een Mac kun je met `npm run package -- x86_64-apple-darwin` ook de Intel-versie bouwen nadat `rustup target add x86_64-apple-darwin` is uitgevoerd. De GitHub Actions-releasepipeline bouwt uitsluitend Windows x64 en macOS Apple Silicon en bewaart installers als artifacts; er wordt niets gepubliceerd.
+Het packaging-script bouwt via Tauri de macOS `.app` en maakt een DMG met `hdiutil` (zonder Finder-opmaakautomatisering); op Windows bouwt Tauri NSIS `.exe`/MSI in `src-tauri/target/release/bundle/`. De lokale build volgt de architectuur van de machine. Op een Mac kun je met `npm run package -- x86_64-apple-darwin` ook de Intel-versie bouwen nadat `rustup target add x86_64-apple-darwin` is uitgevoerd. De GitHub Actions-releasepipeline bouwt uitsluitend Windows x64 en macOS Apple Silicon en bewaart installers als artifacts. Bij een versietag publiceert de pipeline daarnaast een GitHub Release met de losse installers.
 
 De eerste release is niet publiek ondertekend of genotariseerd. De `.gitignore` sluit dependencies, buildoutput, native helpers, databases, logs en lokale credentials uit. `package-lock.json` en `src-tauri/Cargo.lock` horen wel in Git.
 
@@ -102,9 +102,11 @@ De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je 
    | `hej-windows-2022` | Windows x64 (`.exe` en `.msi`) |
    | `hej-macos-15` | macOS Apple Silicon (`.dmg`) |
 
-De pipeline maakt build-artifacts; een GitHub Release wordt niet automatisch gepubliceerd. Wil je die publiceren, kies dan **Releases → Draft a new release**, selecteer de bestaande tag en voeg de uitgepakte installers toe. Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken.
+Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes en de losse Windows `.exe`/`.msi`-installers en macOS `.dmg`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle drie bestandstypen aanwezig en geüpload zijn. Tags met een suffix, zoals `v0.1.3-rc.1`, worden als prerelease gepubliceerd.
 
-Gebruik voor een volgende versie een nieuwe tag. Bij een tijdelijke buildfout kun je de bestaande workflowrun opnieuw uitvoeren via **Re-run failed jobs**.
+Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken. Een uitvoering op een branch maakt alleen artifacts; een uitvoering op een `v*`-tag publiceert ook de release. Het releasejob gebruikt het ingebouwde GitHub Actions-token met `contents: write`; een apart token is niet nodig.
+
+Gebruik voor een volgende versie een nieuwe tag. Bij een tijdelijke buildfout kun je de bestaande workflowrun opnieuw uitvoeren via **Re-run failed jobs**. Een herhaalde releasejob vult de bestaande release aan en vervangt installers met dezelfde bestandsnaam.
 
 Referenties: [Codex exec](https://developers.openai.com/codex/noninteractive), [Apple systeemspraak](https://developer.apple.com/documentation/avfoundation/speech-synthesis), [Windows systeemspraak](https://learn.microsoft.com/en-us/uwp/api/windows.media.speechsynthesis.speechsynthesizer).
 
