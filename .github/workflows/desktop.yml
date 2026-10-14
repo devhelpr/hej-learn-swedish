@@ -62,11 +62,11 @@ jobs:
       contents: write
       actions: read
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: hej-*
           path: installers
-      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: voice-packages
