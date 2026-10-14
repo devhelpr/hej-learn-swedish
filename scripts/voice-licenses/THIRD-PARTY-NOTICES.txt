@@ -1,0 +1,32 @@
+Hej Windows offline speech
+
+sherpa-onnx 1.13.8: Copyright Xiaomi Corporation and contributors, Apache-2.0.
+Pinned source: https://github.com/k2-fsa/sherpa-onnx/tree/v1.13.8
+Build instructions: https://k2-fsa.github.io/sherpa/onnx/install/windows/index.html
+The native libraries and managed bindings are distributed through the matching
+org.k2fsa.sherpa.onnx NuGet packages. Their native speech dependencies include
+ONNX Runtime (MIT) and eSpeak NG (GPL-3.0-or-later).
+
+Corresponding speech dependency sources/build scripts are identified by the
+pinned sherpa-onnx source's cmake/espeak-ng-for-piper.cmake and cmake/onnxruntime.cmake.
+Corresponding eSpeak source archive:
+https://github.com/csukuangfj/espeak-ng/archive/ed530aa113046142eb5115cf2fc9157854d0ffe1.zip
+SHA-256: e4e262cbe34f7fe21f91f1ba3397f2728e1f30eafbae7853f2b753a9ed13f0dd
+Source repositories: https://github.com/csukuangfj/espeak-ng
+                    https://github.com/microsoft/onnxruntime
+Phonemizer data is copied without modification from:
+https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-sv_SE-nst-medium.tar.bz2
+SHA-256: 5aed0f5ab75135fc3ba6a4f3567e171d72df753305b08a01ca42f79411587f67
+
+Alma: Daniel Nylander, CC BY 4.0.
+https://huggingface.co/yeagersthlm/piper-voice-sv-alma/tree/b03e1489762690deabd2ad45dc75ff7f26c645c2
+NST: trained by KBLab at the National Library of Sweden; the Piper model
+repository declares MIT, and the NST training dataset is CC0.
+https://huggingface.co/rhasspy/piper-voices/tree/375a0fe641dea077c2a47b4e9a056d6da521eed3/sv/sv_SE/nst/medium
+
+Model weights are unchanged. ONNX metadata is adapted and token tables generated
+following sherpa-onnx's Apache-2.0 conversion script. Each downloaded package
+contains its source attribution and licenses.
+
+NAudio 2.2.1: Mark Heath and contributors, MIT.
+https://github.com/naudio/NAudio/tree/v2.2.1

@@ -4,7 +4,7 @@ use std::{
     process::{Child, ChildStdin, Command, Stdio},
     sync::{Arc, Mutex},
 };
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::oneshot;
 type Pending = Arc<Mutex<std::collections::HashMap<String, oneshot::Sender<Value>>>>;
 pub struct Speech {
@@ -44,7 +44,29 @@ impl Speech {
                         if cfg!(windows) { ".exe" } else { "" }
                     ))
             };
-            let mut child=Command::new(helper).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|_|"De native spraakhulp kon niet starten. Herinstalleer de app of voer npm run native uit.".to_string())?;
+            let mut command = Command::new(helper);
+            if cfg!(windows) {
+                let resources = app
+                    .path()
+                    .resource_dir()
+                    .map_err(|e| e.to_string())?
+                    .join("speech-data");
+                let resources = if resources.is_dir() {
+                    resources
+                } else {
+                    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("target/voice-resources")
+                };
+                command
+                    .env("HEJ_VOICE_DIR", crate::voices::root(app)?)
+                    .env("HEJ_SPEECH_DATA", resources);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                }
+            }
+            let mut child=command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|_|"De native spraakhulp kon niet starten. Herinstalleer de app of voer npm run native uit.".to_string())?;
             let stdout = child.stdout.take().unwrap();
             let stdin = child.stdin.take().unwrap();
             let app = app.clone();

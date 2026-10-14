@@ -1,5 +1,6 @@
 """Native protocol acceptance check. Run with a built helper path as argument.
-Uses only local system TTS; keep volume audible for listening verification.
+Uses local TTS; keep volume audible for listening verification.
+Pass a voice ID as the second argument to test a downloaded voice.
 """
 import json
 import queue
@@ -29,7 +30,9 @@ def expect(kind, request, timeout=20):
     raise AssertionError(f"Missing {kind} for {request}")
 try:
     send("voices")
-    voice = expect("voices", "test")["voices"][0]["id"]
+    voices = expect("voices", "test")["voices"]
+    voice = sys.argv[2] if len(sys.argv) > 2 else voices[0]["id"]
+    assert any(v["id"] == voice for v in voices), f"Missing voice {voice}"
     send("speak", "one", text="I dag regnar det i Sverige. Vi går till skolan och sedan går vi hem igen.", voiceId=voice, rate=.65)
     expect("started", "one")
     send("pause")

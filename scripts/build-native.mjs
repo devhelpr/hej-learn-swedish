@@ -27,6 +27,11 @@ if (process.platform === "darwin") {
   );
 } else if (process.platform === "win32") {
   execFileSync(
+    process.env.HEJ_PYTHON || "python",
+    ["scripts/prepare-voices.py", "--resources-only"],
+    { stdio: "inherit" },
+  );
+  execFileSync(
     "dotnet",
     [
       "publish",

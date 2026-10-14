@@ -4,6 +4,7 @@ dist/
 .vite/
 coverage/
 *.tsbuildinfo
+__pycache__/
 
 # Rust / Tauri build output and generated speech helpers
 src-tauri/target/

@@ -4,6 +4,7 @@ mod model;
 mod news;
 mod speech;
 mod store;
+mod voices;
 use generation::Generation;
 use model::*;
 use speech::Speech;
@@ -69,6 +70,25 @@ async fn list_voices(
     s.voices(&app).await
 }
 #[tauri::command]
+async fn list_downloadable_voices(
+    app: tauri::AppHandle,
+    s: State<'_, voices::Downloads>,
+) -> Result<Vec<voices::AvailableVoice>, String> {
+    voices::list(&app, &s).await
+}
+#[tauri::command]
+async fn install_voice(
+    app: tauri::AppHandle,
+    s: State<'_, voices::Downloads>,
+    id: String,
+) -> Result<(), String> {
+    voices::install(&app, &s, &id).await
+}
+#[tauri::command]
+fn cancel_voice_download(s: State<voices::Downloads>, id: String) {
+    s.cancel(&id);
+}
+#[tauri::command]
 fn speech_control(
     app: tauri::AppHandle,
     s: State<Speech>,
@@ -99,6 +119,7 @@ fn main() {
     let app = tauri::Builder::default()
         .manage(Generation(std::sync::Mutex::new(None)))
         .manage(Speech::new())
+        .manage(voices::Downloads::default())
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
@@ -118,6 +139,9 @@ fn main() {
             save_settings,
             detect_codex,
             list_voices,
+            list_downloadable_voices,
+            install_voice,
+            cancel_voice_download,
             speech_control,
             open_source
         ])
@@ -127,6 +151,7 @@ fn main() {
         if matches!(event, tauri::RunEvent::Exit) {
             app.state::<Generation>().cancel();
             app.state::<Speech>().shutdown();
+            app.state::<voices::Downloads>().shutdown();
         }
     });
 }

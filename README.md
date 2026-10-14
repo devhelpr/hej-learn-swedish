@@ -1,10 +1,10 @@
 # Hej — Zweeds oefenen met nieuws
 
-Nederlandstalige Tauri 2-desktopapp voor Windows 11 x64 en macOS 13+ (Intel/Apple Silicon). Nieuws van SVT landelijk en Småland wordt via je eigen Codex CLI een A1-, A2- of B1-oefening. Zweedse zinnen worden uitsluitend door de geïnstalleerde systeemstem uitgesproken. Nederlandse vertalingen blijven tijdens het afspelen zichtbaar en kunnen worden verborgen.
+Nederlandstalige Tauri 2-desktopapp voor Windows 11 x64 en macOS 13+ (Intel/Apple Silicon). Nieuws van SVT landelijk en Småland wordt via je eigen Codex CLI een A1-, A2- of B1-oefening. Zweedse zinnen worden lokaal uitgesproken: met systeemstemmen of, op Windows, downloadbare Alma- en NST-stemmen. Nederlandse vertalingen blijven tijdens het afspelen zichtbaar en kunnen worden verborgen.
 
 ## Starten
 
-Benodigd voor ontwikkeling: Node.js 24+, Rust stable en de [Tauri-platformvereisten](https://v2.tauri.app/start/prerequisites/). macOS vereist Xcode-commandlinetools; Windows vereist MSVC-buildtools, WebView2 en .NET SDK 8 voor de spraakhulp.
+Benodigd voor ontwikkeling: Node.js 24+, Rust stable en de [Tauri-platformvereisten](https://v2.tauri.app/start/prerequisites/). macOS vereist Xcode-commandlinetools; Windows vereist MSVC-buildtools, WebView2, Python 3.11+ en .NET SDK 8 voor de spraakhulp. Python downloadt tijdens de Windows-build de gecontroleerde fonemizergegevens; eindgebruikers hoeven Python of .NET niet te installeren.
 
 ```sh
 npm ci
@@ -16,6 +16,14 @@ De preview op `http://127.0.0.1:1437` toont de schermen. Native functies werken 
 Installeer daarnaast [Codex CLI](https://developers.openai.com/codex/cli/) en voer `codex login` uit. De app gebruikt je bestaande CLI-login; er is geen spraak-API, API-keyveld of cloudstem. Genereren vereist internet en beschikbare Codex-capaciteit. Instellingen zoeken automatisch naar `codex`; kies bij afwijkende installaties het uitvoerbare pad. Op Windows moet dit het native `codex.exe` zijn, geen npm `.cmd`-wrapper. CLI-versie 0.161.0 is als uitgangspunt gecontroleerd; oudere versies zonder `--ignore-user-config` werken niet.
 
 Kies in Instellingen een lokale Zweedse stem. Ontbreekt deze, volg de getoonde OS-instructies en controleer opnieuw. Op macOS is de beschikbare `sv-SE`-stem Alva tijdens ontwikkeling gedetecteerd. Offline luisteren vereist dat een stem eerst is gedownload.
+
+### Extra Windows-stemmen
+
+Open **Instellingen → Stemmen downloaden** en download **Alma** (circa 63,5 MB) of **NST** (circa 63,1 MB). De app toont voortgang en biedt annuleren en opnieuw proberen. Downloaden verandert je gekozen stem niet. Met **Selecteren en testen** kies je de stem en hoor je een voorbeeldzin; daarna blijft de keuze opgeslagen. Bengt en andere geïnstalleerde Zweedse systeemstemmen blijven beschikbaar.
+
+De download komt van de vaste GitHub Release `speech-models-v1` van deze repository (met HTTPS-omleidingen naar GitHub asset-hosts). Er is geen account, API-sleutel of GPU nodig. Na downloaden werken beide stemmen offline op de CPU; oefentekst wordt voor spraak nooit verstuurd. De modellen worden met pakket- en bestandschecksums gecontroleerd en onder `voices/` in de app-data-map opgeslagen. De installer bevat de spraakruntime en eSpeak NG-gegevens, maar geen stemmodellen. Een ontbrekende of beschadigde gekozen stem vraagt om opnieuw installeren; de app wisselt niet automatisch naar Bengt. De modellen klinken verschillend: vergelijk ze zelf bij het gewenste tempo.
+
+De modellen staan in de vaste [stemrelease `speech-models-v1`](https://github.com/devhelpr/hej-learn-swedish/releases/tag/speech-models-v1). Deze release bevat modelgegevens; gebruik een Windows-appbuild met de nieuwe stemondersteuning. De releasepipeline controleert bestaande assets op exacte overeenstemming voordat zij nieuwe installers publiceert; bestaande stempackages worden niet overschreven.
 
 ## Oefenen
 
@@ -35,7 +43,9 @@ Kies in Instellingen een lokale Zweedse stem. Ontbreekt deze, volg de getoonde O
 
 React/TypeScript/Vite vormen de UI. Alleen Rust doet nieuwsverzoeken, CLI-processen en SQLite-opslag. `hej.sqlite` staat in de door Tauri bepaalde app-data-map (`nl.learnswedish.hej`). De originele artikeltekst blijft uitsluitend in het geopende scherm en tijdelijke CLI-invoer; de lesopslag bewaart alleen de oefening, vertalingen, bronlink, bronidentiteit, niveau, voortgang, archiefstatus en taalbijzonderheden. Brontekst wordt voor generatie aan Codex doorgegeven.
 
-De Swift-spraakhulp gebruikt `AVSpeechSynthesizer` op de main thread. De Windows C#-hulp gebruikt `Windows.Media.SpeechSynthesis` en NAudio voor lokale audioweergave, pauzeren en eindmeldingen. Beide spreken dezelfde JSON-lines-commandotaal via stdin/stdout. De helper wordt meegeleverd als Tauri-sidecar; de gebruiker hoeft Swift of .NET niet te installeren.
+De Swift-spraakhulp gebruikt `AVSpeechSynthesizer` op de main thread. De Windows C#-hulp gebruikt `Windows.Media.SpeechSynthesis` voor systeemstemmen en sherpa-onnx 1.13.8 voor Piper-modellen; NAudio verzorgt lokale audioweergave, pauzeren en eindmeldingen. Een geladen model blijft tussen zinnen in het geheugen. Annulering en vervangen van een zin behouden de bestaande request-ID-bescherming. Beide helpers spreken dezelfde JSON-lines-commandotaal via stdin/stdout. De helper wordt meegeleverd als Tauri-sidecar; de gebruiker hoeft Swift of .NET niet te installeren.
+
+Rust beheert de vaste stemcatalogus en expliciete downloads via `list_downloadable_voices`, `install_voice` en `cancel_voice_download`. Voortgang komt via `voice-download`, los van het bestaande `speech`-event. Tijdelijke downloads worden nooit als geïnstalleerde stem aangeboden. De bestaande instellingenstructuur blijft gelijk; nieuwe stem-ID's zijn `local:alma` en `local:nst`. macOS houdt zijn bestaande spraakpad.
 
 Codex draait in een tijdelijke map met read-only sandbox, zonder gebruikersconfig/MCP-servers, uitgeschakelde shell-tool en webzoekfunctie. Invoer wordt als gequote brondata aangeboden, rechtstreeks via stdin. Processen worden niet via een shell gestart. Uitvoer wordt structureel en op inhoudslengte gevalideerd vóór opslag. Het gekozen CEFR-niveau en feitelijke juistheid vragen menselijke beoordeling; structurele validatie kan dat niet bewijzen.
 
@@ -54,6 +64,20 @@ cargo clippy --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
 Tests dekken stale spraakmeldingen, progressgrenzen, RSS-normalisatie, artikelherkenning, linkbeperkingen, SQLite-hervatten, schemavalidatie en subprocess-succes/fout/annulering/timeout. Subprocess-tests gebruiken een lokale fake CLI, geen accountcapaciteit. Optionele live tests: `cargo test --manifest-path src-tauri/Cargo.toml live_feeds_and_article -- --ignored --nocapture` en `cargo test --manifest-path src-tauri/Cargo.toml live_codex_levels -- --ignored --nocapture`. De tweede gebruikt je Codex-login/capaciteit en bewaart QA-uitvoer in de genegeerde `target/qa/`-map. Voor echte taalbijzonderheden op A1/A2/B1 met fictieve testteksten: `cargo test --manifest-path src-tauri/Cargo.toml live_language_notes_levels -- --ignored --nocapture`. Deze test gebruikt eveneens je Codex-login/capaciteit en schrijft alleen naar `target/qa/`. Voor een native spraaktest: `python3 scripts/check-speech.py <pad-naar-helper>`.
 
 Handmatige acceptatie op beide systemen: spreek een zin uit, pauzeer middenin, hervat, onderbreek met een andere zin, navigeer weg tijdens afspelen, verander tempo, pauzeer tussen twee zinnen en hervat. Controleer ondertiteling en offline hervatten na herstart. Controleer ontbrekende stem/CLI/login en beoordeel oefenteksten op alle niveaus tegen hun bron. Windows-runtime en Intel-macOS moeten op die platformen worden gecontroleerd.
+
+Voor beide echte Windows-modellen bouwt CI gecontroleerde stempackages en test zij de gepubliceerde helper zonder geluidsapparaat op synthese bij snelheid 0,5 en 1,3 plus annulering. Lokaal:
+
+```sh
+python -m pip install -r scripts/voice-requirements.txt
+python scripts/prepare-voices.py
+python scripts/check-local-voices.py src-tauri/binaries/speech-helper-x86_64-pc-windows-msvc.exe
+```
+
+`prepare-voices.py` gebruikt vaste upstream commits, ONNX-metadata-conversie volgens sherpa-onnx en deterministische ZIP-bestanden. Het script weigert publicatie als grootte of checksums afwijken van `src-tauri/voice-catalog.json`. `--update-catalog` is alleen voor het voorbereiden van een nieuwe stemrelease; verander dan ook de release-/pakketversie, zodat bestaande downloads nooit worden vervangen. `--resources-only` vereist geen Python-pakketten en wordt door `npm run native` op Windows gebruikt. Een afwijkend Python-pad kan via `HEJ_PYTHON` worden ingesteld.
+
+Handmatige Windows-acceptatie: installeer zowel NSIS als MSI op een schone computer zonder ontwikkeltools; download beide stemmen, vergelijk met Bengt, controleer Zweedse namen/getallen en langzaam afspelen, herstart zonder internet, onderbreek downloads en test pauze/hervatten/stoppen tijdens synthese en afspelen. Controleer ook opnieuw installeren na een beschadigd model. Voor hoorbare protocoltests geef je `local:alma` of `local:nst` als tweede argument aan `scripts/check-speech.py`, met `HEJ_VOICE_DIR` op de app-data-map `voices/` en `HEJ_SPEECH_DATA` op de geïnstalleerde map `speech-data/`.
+
+Licenties en bronverwijzingen voor sherpa-onnx, ONNX Runtime, eSpeak NG, NAudio en modellen staan in `scripts/voice-licenses/` en worden met de Windows-app meegeleverd. Alma gebruikt CC BY 4.0; de Piper NST-repository vermeldt MIT en de NST-dataset CC0. Elke stempackage bevat eigen licentie en naamsvermelding.
 
 ## Installatiebundels
 

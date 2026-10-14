@@ -19,9 +19,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: backend.invoke }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(
     async (_name: string, listener: (e: { payload: SpeechEvent }) => void) => {
-      backend.listener = listener;
+      if (_name === "speech") backend.listener = listener;
       return () => {
-        backend.listener = null;
+        if (_name === "speech") backend.listener = null;
       };
     },
   ),
@@ -966,4 +966,74 @@ it("retries direct creation at the captured level without altering a custom draf
     "value",
     "Concept",
   );
+});
+
+describe("downloaded voice preferences", () => {
+  it("keeps a missing saved local voice instead of selecting Bengt", async () => {
+    backend.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return { ...defaults, voiceId: "local:nst" };
+      if (cmd === "list_voices")
+        return [{ id: "bengt", name: "Bengt", language: "sv-SE" }];
+      if (cmd === "list_downloadable_voices")
+        return [
+          {
+            id: "local:nst",
+            name: "NST",
+            size: 63117376,
+            installed: false,
+            downloading: false,
+          },
+        ];
+      if (cmd === "list_lessons" || cmd === "fetch_news") return [];
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Instellingen" }));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Stem") as HTMLSelectElement).value).toBe(
+        "local:nst",
+      ),
+    );
+    expect(await screen.findByText(/De gekozen stem ontbreekt/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Stemmen opnieuw controleren/ }),
+    );
+    await waitFor(() =>
+      expect((screen.getByLabelText("Stem") as HTMLSelectElement).value).toBe(
+        "local:nst",
+      ),
+    );
+  });
+  it("selects and tests an installed voice with its actual local ID", async () => {
+    backend.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings") return { ...defaults, voiceId: "bengt" };
+      if (cmd === "list_voices")
+        return [
+          { id: "bengt", name: "Bengt", language: "sv-SE" },
+          { id: "local:alma", name: "Alma", language: "sv-SE" },
+        ];
+      if (cmd === "list_downloadable_voices")
+        return [
+          {
+            id: "local:alma",
+            name: "Alma",
+            size: 63461036,
+            installed: true,
+            downloading: false,
+          },
+        ];
+      if (cmd === "list_lessons" || cmd === "fetch_news") return [];
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Instellingen" }));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Stem") as HTMLSelectElement).value).toBe(
+        "bengt",
+      ),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Selecteren en testen" }),
+    );
+    await waitFor(() => expect(calls()).toHaveLength(1));
+    expect(calls()[0].voiceId).toBe("local:alma");
+  });
 });

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "local:alma",
+    "name": "Alma",
+    "version": "1",
+    "url": "https://github.com/devhelpr/hej-learn-swedish/releases/download/speech-models-v1/hej-voice-alma-v1.zip",
+    "size": 63461036,
+    "sha256": "c0721270aaabf00efc06d8785a60fc4343301c23369267e51efd705e452b897c",
+    "files": {
+      "LICENSE.txt": {
+        "size": 18657,
+        "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411"
+      },
+      "NOTICE.txt": {
+        "size": 207,
+        "sha256": "23588300d79b601f6718261b70f09ebc3ea124a8fe44655731c44218e9d261dd"
+      },
+      "config.json": {
+        "size": 6135,
+        "sha256": "eb0d1efc0734d94e00ce59bb51b0dc90b798e48d0399fb035233847110c1d30e"
+      },
+      "model.onnx": {
+        "size": 63434768,
+        "sha256": "cc7cd9835f4daed38860c9478dd394374894d9127291df521ae7d7d30f3431cc"
+      },
+      "tokens.txt": {
+        "size": 763,
+        "sha256": "42d1a69ed2b91a51928a711aa228ed9f3dc021c6d359a3e9c4f37eb1d20f80bd"
+      }
+    }
+  },
+  {
+    "id": "local:nst",
+    "name": "NST",
+    "version": "1",
+    "url": "https://github.com/devhelpr/hej-learn-swedish/releases/download/speech-models-v1/hej-voice-nst-v1.zip",
+    "size": 63118583,
+    "sha256": "ece7ede2c4568fe206c6bfb24c6b631fb06dcbf383a800580e5151a93f376b3f",
+    "files": {
+      "DATASET-LICENSE.txt": {
+        "size": 7048,
+        "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+      },
+      "LICENSE.txt": {
+        "size": 1071,
+        "sha256": "4cd71dece7037f1d6d93cce7570c57ab75ea9ac566fd4990be2f3ab08d15b47f"
+      },
+      "NOTICE.txt": {
+        "size": 241,
+        "sha256": "b151975b4094995ccba699e49463d1398faefc850cfef4c6b9de7a8937611619"
+      },
+      "config.json": {
+        "size": 4157,
+        "sha256": "d45dd74cbb4eca58694bf04a97e243044092476f28a55ae26424f0653086980a"
+      },
+      "model.onnx": {
+        "size": 63104683,
+        "sha256": "5de1daa67ae8e52af806bdf2ea027fa03a3a5407ec0d0c744d61aae10a7123b3"
+      },
+      "tokens.txt": {
+        "size": 763,
+        "sha256": "42d1a69ed2b91a51928a711aa228ed9f3dc021c6d359a3e9c4f37eb1d20f80bd"
+      }
+    }
+  }
+]

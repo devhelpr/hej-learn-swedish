@@ -13,6 +13,7 @@ import {
 import { demo } from "./demo";
 import LanguageNotes from "./LanguageNotes";
 import LessonBrowser from "./LessonBrowser";
+import DownloadableVoices from "./DownloadableVoices";
 import { emptyFilter, type LessonFilter } from "./lesson-browser";
 import { acceptsEvent, resumeIndex, type PlayerState } from "./player";
 
@@ -174,9 +175,10 @@ export default function App() {
       setVoices(v);
       setSettings((s) => ({
         ...s,
-        voiceId: v.some((x) => x.id === s.voiceId)
-          ? s.voiceId
-          : (v[0]?.id ?? ""),
+        voiceId:
+          s.voiceId.startsWith("local:") || v.some((x) => x.id === s.voiceId)
+            ? s.voiceId
+            : (v[0]?.id ?? ""),
       }));
     } catch (e) {
       fail(e);
@@ -204,7 +206,8 @@ export default function App() {
         setSettings({
           ...s,
           voiceId: v
-            ? v.some((x) => x.id === s.voiceId)
+            ? s.voiceId.startsWith("local:") ||
+              v.some((x) => x.id === s.voiceId)
               ? s.voiceId
               : (v[0]?.id ?? "")
             : s.voiceId,
@@ -1169,6 +1172,12 @@ export default function App() {
                   onChange={(e) => update("voiceId", e.target.value)}
                 >
                   <option value="">Kies een Zweedse stem</option>
+                  {settings.voiceId.startsWith("local:") &&
+                    !voices.some((v) => v.id === settings.voiceId) && (
+                      <option value={settings.voiceId}>
+                        Stem ontbreekt · opnieuw downloaden
+                      </option>
+                    )}
                   {voices.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.name} · {v.language}
@@ -1178,6 +1187,27 @@ export default function App() {
                 <button className="quiet" onClick={() => void refreshVoices()}>
                   ↻ Stemmen opnieuw controleren
                 </button>
+                {settings.voiceId.startsWith("local:") &&
+                  !voices.some((v) => v.id === settings.voiceId) && (
+                    <p role="alert">
+                      De gekozen stem ontbreekt. Download haar hieronder
+                      opnieuw.
+                    </p>
+                  )}
+                {desktop && (
+                  <DownloadableVoices
+                    selected={settings.voiceId}
+                    onInstalled={refreshVoices}
+                    onSelectTest={async (id) => {
+                      await stop();
+                      const next = { ...settingsRef.current, voiceId: id };
+                      settingsRef.current = next;
+                      setSettings(next);
+                      await openLesson(demo);
+                      await play(0, false);
+                    }}
+                  />
+                )}
                 {voices.length === 0 && (
                   <div className="voice-help">
                     <strong>Een Zweedse stem installeren</strong>
