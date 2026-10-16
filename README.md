@@ -27,6 +27,8 @@ De modellen staan in de vaste [stemrelease `speech-models-v1`](https://github.co
 
 De voorbeeldtekst en gedownloade stemmen werken zonder Codex en zonder geïnstalleerde Windows-systeemstem. Een onbeschikbare Windows-spraakcomponent blokkeert de lokale stemmen niet. Bij een afspeelfout vermeldt de melding of spraak maken, audio openen of afspelen mislukt; **Technische details** toont de exception en recente runtime-diagnostiek voor probleemonderzoek. Deze diagnostiek blijft in het geheugen en wordt niet naar een logbestand geschreven.
 
+De Windows-helper normaliseert Tauri-paden met een `\\?\`-prefix naar gewone schijf- of UNC-paden voordat hij model-, token- en fonemizerpaden aan de native spraakengine doorgeeft. Dit voorkomt een onterechte melding dat `phontab` ontbreekt bij een geïnstalleerde app. De Windows-modeltest controleert zowel gewone als geprefixte paden met beide echte stemmen; opnieuw downloaden van modellen is voor deze padcorrectie niet nodig.
+
 ## Oefenen
 
 - Kies A1/A2/B1 in het hoofdmenu. Selecteer daarna een bericht uit Landelijk of Småland: de app haalt de artikeltekst op, maakt direct een oefening en opent haar in Oefenen.
@@ -93,15 +95,15 @@ De eerste release is niet publiek ondertekend of genotariseerd. De `.gitignore` 
 
 ## Releasepipeline op GitHub starten
 
-De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v0.1.7`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
+De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v1.2.8`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
 
-1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `0.1.7` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
+1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `1.2.8` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
 
    ```sh
-   npm version 0.1.7 --no-git-tag-version
+   npm version 1.2.8 --no-git-tag-version
    ```
 
-2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `0.1.7`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
+2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `1.2.8`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
 
    ```sh
    npm run native
@@ -115,20 +117,20 @@ De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je 
 
    ```sh
    git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock README.md
-   git commit -m "Release v0.1.7"
-   git tag -a v0.1.7 -m "Hej v0.1.7"
+   git commit -m "Release v1.2.8"
+   git tag -a v1.2.8 -m "Hej v1.2.8"
    git push origin main
-   git push origin v0.1.7
+   git push origin v1.2.8
    ```
 
-4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v0.1.7`. Na een geslaagde build download je de installers onder **Artifacts**:
+4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v1.2.8`. Na een geslaagde build download je de installers onder **Artifacts**:
 
    | Artifact | Platform |
    | --- | --- |
    | `hej-windows-2022` | Windows x64 (`.exe` en `.msi`) |
    | `hej-macos-15` | macOS Apple Silicon (`.dmg`) |
 
-Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes en de losse Windows `.exe`/`.msi`-installers en macOS `.dmg`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle drie bestandstypen aanwezig en geüpload zijn. Tags met een suffix, zoals `v0.1.7-rc.1`, worden als prerelease gepubliceerd.
+Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes en de losse Windows `.exe`/`.msi`-installers en macOS `.dmg`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle drie bestandstypen aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.2.8-rc.1`, worden als prerelease gepubliceerd.
 
 Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken. Een uitvoering op een branch maakt alleen artifacts; een uitvoering op een `v*`-tag publiceert ook de release. Het releasejob gebruikt het ingebouwde GitHub Actions-token met `contents: write`; een apart token is niet nodig.
 

@@ -77,10 +77,12 @@ internal class Program {
             if (!Ready(package, true)) throw new Exception("Deze stem is beschadigd. Installeer haar opnieuw bij Instellingen → Stemmen downloaden.");
             localSynth?.Dispose(); localSynth=null; loadedVoice="";
             var config = new OfflineTtsConfig();
-            config.Model.Vits.Model = Path.Combine(dir, "model.onnx");
-            config.Model.Vits.Tokens = Path.Combine(dir, "tokens.txt");
-            config.Model.Vits.DataDir = Path.Combine(DataRoot, "espeak-ng-data");
-            if (!File.Exists(Path.Combine(config.Model.Vits.DataDir, "phondata"))) throw new Exception("Spraakgegevens ontbreken. Herinstalleer de app.");
+            config.Model.Vits.Model = NativeSpeechPath.Normalize(Path.Combine(dir, "model.onnx"));
+            config.Model.Vits.Tokens = NativeSpeechPath.Normalize(Path.Combine(dir, "tokens.txt"));
+            config.Model.Vits.DataDir = NativeSpeechPath.Normalize(Path.Combine(DataRoot, "espeak-ng-data"));
+            foreach (var file in new[] { "phondata", "phontab", "phonindex", "sv_dict", "lang/gmq/sv" }) {
+                if (!File.Exists(Path.Combine(config.Model.Vits.DataDir, file))) throw new Exception($"Spraakgegevens ontbreken ({file}). Herinstalleer de app.");
+            }
             config.Model.NumThreads = Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
             config.Model.Provider = "cpu";
             if (id == "local:alma") {
@@ -136,6 +138,17 @@ internal class Program {
     static int Main(string[] args) {
         if (args.SequenceEqual(new[] { "--verify-models" })) {
             try {
+                var pathCases = new Dictionary<string, string> {
+                    [@"\\?\C:\Users\learner\AppData\Local\Hej\speech-data\espeak-ng-data"] = "C:/Users/learner/AppData/Local/Hej/speech-data/espeak-ng-data",
+                    [@"\?\C:\Users\learner\speech-data"] = "C:/Users/learner/speech-data",
+                    [@"\\?\UNC\server\share\speech-data"] = "//server/share/speech-data",
+                    [@"\\server\share\speech-data"] = "//server/share/speech-data",
+                    [@"C:\Program Files\Hej\speech-data"] = "C:/Program Files/Hej/speech-data",
+                    [@"C:\Users\Björn\speech-data"] = "C:/Users/Björn/speech-data",
+                };
+                foreach (var path in pathCases) {
+                    if (NativeSpeechPath.Normalize(path.Key) != path.Value) throw new Exception("Native path normalization failed: " + path.Key);
+                }
                 var empty = new OfflineTtsGeneratedAudio(IntPtr.Zero);
                 try { ValidateAudio(empty, epoch); throw new Exception("Null synthesis was accepted"); }
                 catch (InvalidOperationException e) when (e.Message.Contains("geen audio")) { }

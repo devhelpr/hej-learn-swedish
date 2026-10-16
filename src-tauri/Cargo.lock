@@ -1955,7 +1955,7 @@ dependencies = [
 
 [[package]]
 name = "learn-swedish"
-version = "0.1.7"
+version = "1.2.8"
 dependencies = [
  "chrono",
  "libc",
