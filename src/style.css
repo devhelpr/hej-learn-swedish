@@ -628,6 +628,14 @@ textarea {
 .voice-download [role="alert"] {
   overflow-wrap: anywhere;
 }
+.speech-error-details {
+  margin-top: 8px;
+}
+.speech-error-details pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
 .settings-card label > span {
   font-weight: 400;
 }

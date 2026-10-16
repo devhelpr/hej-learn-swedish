@@ -66,14 +66,27 @@ impl Speech {
                     command.creation_flags(0x08000000); // CREATE_NO_WINDOW
                 }
             }
-            let mut child=command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().map_err(|_|"De native spraakhulp kon niet starten. Herinstalleer de app of voer npm run native uit.".to_string())?;
+            let mut child=command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|_|"De native spraakhulp kon niet starten. Herinstalleer de app of voer npm run native uit.".to_string())?;
             let stdout = child.stdout.take().unwrap();
+            let stderr = child.stderr.take().unwrap();
+            let diagnostics = Arc::new(Mutex::new(std::collections::VecDeque::<String>::new()));
+            let captured = diagnostics.clone();
+            std::thread::spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    if let Ok(mut lines) = captured.lock() {
+                        if lines.len() == 12 {
+                            lines.pop_front();
+                        }
+                        lines.push_back(line.chars().take(400).collect());
+                    }
+                }
+            });
             let stdin = child.stdin.take().unwrap();
             let app = app.clone();
             let pending = self.pending.clone();
             std::thread::spawn(move || {
                 for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    if let Ok(v) = serde_json::from_str::<Value>(&line) {
+                    if let Ok(mut v) = serde_json::from_str::<Value>(&line) {
                         if v["kind"] == "voices" {
                             if let Some(id) = v["id"].as_str() {
                                 if let Ok(mut p) = pending.lock() {
@@ -83,6 +96,19 @@ impl Speech {
                                 }
                             }
                         } else {
+                            if v["kind"] == "error" {
+                                if let Ok(lines) = diagnostics.lock() {
+                                    if !lines.is_empty() {
+                                        let native =
+                                            lines.iter().cloned().collect::<Vec<_>>().join("\n");
+                                        v["details"] = Value::String(format!(
+                                            "{}\n\nSpraakruntime:\n{}",
+                                            v["details"].as_str().unwrap_or(""),
+                                            native
+                                        ));
+                                    }
+                                }
+                            }
                             let _ = app.emit("speech", v);
                         }
                     }

@@ -1037,3 +1037,64 @@ describe("downloaded voice preferences", () => {
     expect(calls()[0].voiceId).toBe("local:alma");
   });
 });
+
+describe("local speech without optional services", () => {
+  it("plays the example with only a downloaded voice and no Codex", async () => {
+    backend.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === "get_settings")
+        return { ...defaults, codexPath: "", voiceId: "local:nst" };
+      if (cmd === "list_voices")
+        return [{ id: "local:nst", name: "NST", language: "sv-SE" }];
+      if (
+        cmd === "list_lessons" ||
+        cmd === "fetch_news" ||
+        cmd === "list_downloadable_voices"
+      )
+        return [];
+      if (cmd === "detect_codex" || cmd === "generate_lesson")
+        throw new Error("Codex is not installed");
+    });
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Instellingen" }));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Stem") as HTMLSelectElement).value).toBe(
+        "local:nst",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Test de stem" }));
+    await waitFor(() => expect(calls()).toHaveLength(1));
+    expect(calls()[0].voiceId).toBe("local:nst");
+    expect(calls()[0].text).toBe(demo.sentences[0].sv);
+    expect(
+      backend.invoke.mock.calls.some(
+        ([cmd]) => cmd === "detect_codex" || cmd === "generate_lesson",
+      ),
+    ).toBe(false);
+  });
+  it("shows speech failure details and clears them for unrelated failures", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "▶ Afspelen" }));
+    await waitFor(() => expect(calls()).toHaveLength(1));
+    await act(async () =>
+      backend.listener?.({
+        payload: {
+          kind: "error",
+          id: calls()[0].id,
+          message: "Fout bij spraak maken",
+          details: "Native synthesis returned no audio",
+        },
+      }),
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Fout bij spraak maken",
+    );
+    expect(screen.getByText("Technische details")).toBeTruthy();
+    expect(screen.getByText("Native synthesis returned no audio")).toBeTruthy();
+    await act(async () =>
+      backend.listener?.({
+        payload: { kind: "error", id: "", message: "Spraakhulp gestopt" },
+      }),
+    );
+    expect(screen.queryByText("Technische details")).toBeNull();
+  });
+});

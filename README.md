@@ -25,6 +25,8 @@ De download komt van de vaste GitHub Release `speech-models-v1` van deze reposit
 
 De modellen staan in de vaste [stemrelease `speech-models-v1`](https://github.com/devhelpr/hej-learn-swedish/releases/tag/speech-models-v1). Deze release bevat modelgegevens; gebruik een Windows-appbuild met de nieuwe stemondersteuning. De releasepipeline controleert bestaande assets op exacte overeenstemming voordat zij nieuwe installers publiceert; bestaande stempackages worden niet overschreven.
 
+De voorbeeldtekst en gedownloade stemmen werken zonder Codex en zonder geïnstalleerde Windows-systeemstem. Een onbeschikbare Windows-spraakcomponent blokkeert de lokale stemmen niet. Bij een afspeelfout vermeldt de melding of spraak maken, audio openen of afspelen mislukt; **Technische details** toont de exception en recente runtime-diagnostiek voor probleemonderzoek. Deze diagnostiek blijft in het geheugen en wordt niet naar een logbestand geschreven.
+
 ## Oefenen
 
 - Kies A1/A2/B1 in het hoofdmenu. Selecteer daarna een bericht uit Landelijk of Småland: de app haalt de artikeltekst op, maakt direct een oefening en opent haar in Oefenen.

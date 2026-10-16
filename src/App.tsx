@@ -44,6 +44,7 @@ export default function App() {
   const sentenceElement = useRef<HTMLElement | null>(null);
   const [player, setPlayer] = useState<PlayerState>(initialPlayer);
   const [error, setError] = useState("");
+  const [errorDetails, setErrorDetails] = useState("");
   const [notice, setNotice] = useState("");
   const [region, setRegion] = useState("national");
   const [news, setNews] = useState<NewsItem[]>([]);
@@ -81,7 +82,10 @@ export default function App() {
     playerRef.current = p;
     setPlayer(p);
   }, []);
-  const fail = useCallback((e: unknown) => setError(message(e)), []);
+  const fail = useCallback((e: unknown, details = "") => {
+    setError(message(e));
+    setErrorDetails(details);
+  }, []);
   const speech = useCallback(
     (action: string, extra: Record<string, unknown> = {}) =>
       desktop
@@ -140,6 +144,7 @@ export default function App() {
       const s = settingsRef.current;
       const i = resumeIndex(index, current.sentences.length);
       if (!s.voiceId) {
+        setErrorDetails("");
         setError(
           "Geen Zweedse stem geselecteerd. Kies een stem in Instellingen.",
         );
@@ -240,7 +245,7 @@ export default function App() {
           status: "idle",
           continuous: false,
         });
-        fail(e.message ?? "Spraak niet beschikbaar.");
+        fail(e.message ?? "Spraak niet beschikbaar.", e.details);
         return;
       }
       if (!acceptsEvent(p, e)) return;
@@ -254,7 +259,7 @@ export default function App() {
           status: "idle",
           continuous: false,
         });
-        fail(e.message ?? "Afspelen mislukt.");
+        fail(e.message ?? "Afspelen mislukt.", e.details);
       }
       if (e.kind === "cancelled")
         changePlayer({
@@ -683,7 +688,15 @@ export default function App() {
         )}
         {error && !customOpen && (
           <div className="alert" role="alert">
-            <span>{error}</span>
+            <div>
+              <span>{error}</span>
+              {errorDetails && (
+                <details className="speech-error-details">
+                  <summary>Technische details</summary>
+                  <pre>{errorDetails}</pre>
+                </details>
+              )}
+            </div>
             <button aria-label="Melding sluiten" onClick={() => setError("")}>
               ×
             </button>

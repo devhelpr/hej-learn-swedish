@@ -52,6 +52,7 @@ export interface SpeechEvent {
   kind: "started" | "paused" | "finished" | "cancelled" | "error";
   id: string;
   message?: string;
+  details?: string;
 }
 export const defaults: Settings = {
   codexPath: "",

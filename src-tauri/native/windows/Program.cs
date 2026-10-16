@@ -6,6 +6,7 @@ using NAudio.Wave;
 using SherpaOnnx;
 
 internal class Program {
+    internal record Voice(string id, string name, string language);
     static readonly object Gate = new();
     static readonly SemaphoreSlim Synthesis = new(1);
     static readonly string VoiceRoot = Environment.GetEnvironmentVariable("HEJ_VOICE_DIR") ?? "";
@@ -20,8 +21,22 @@ internal class Program {
     static bool paused;
     static int epoch;
     static JsonElement[] LoadCatalog() {
-        using var stream = typeof(Program).Assembly.GetManifestResourceStream("voice-catalog.json")!;
-        return JsonSerializer.Deserialize<JsonElement[]>(stream)!;
+        using var stream = typeof(Program).Assembly.GetManifestResourceStream("voice-catalog.json")
+            ?? throw new InvalidOperationException("Stemcatalogus ontbreekt. Herinstalleer de app.");
+        return JsonSerializer.Deserialize<JsonElement[]>(stream)
+            ?? throw new InvalidOperationException("Stemcatalogus is ongeldig. Herinstalleer de app.");
+    }
+    static IEnumerable<Voice> SystemVoices() => SpeechSynthesizer.AllVoices
+        .Where(v=>v.Language.Equals("sv-SE",StringComparison.OrdinalIgnoreCase))
+        .Select(v=>new Voice(v.Id,v.DisplayName,v.Language));
+    static List<Voice> ListVoices(Func<IEnumerable<Voice>>? systemVoices = null) {
+        var voices = Catalog.Where(p=>Ready(p,true)).Select(p=>new Voice(
+            p.GetProperty("id").GetString()!, p.GetProperty("name").GetString()! + " · lokaal", "sv-SE")).ToList();
+        // Windows system speech is optional. Enumeration can fail on installations
+        // without the speech components; keep downloaded voices available.
+        try { voices.InsertRange(0, (systemVoices ?? SystemVoices)().ToList()); }
+        catch (Exception) { }
+        return voices;
     }
     static string Folder(JsonElement p) => Path.Combine(VoiceRoot, p.GetProperty("id").GetString()![6..] + "-" + p.GetProperty("version").GetString());
     static bool Ready(JsonElement p, bool verify) {
@@ -45,6 +60,13 @@ internal class Program {
         Interlocked.Increment(ref epoch); active=""; paused=false;
         player?.Stop(); player?.Dispose(); reader?.Dispose(); audio?.Dispose();
         player=null; reader=null; audio=null;
+    }
+    static void ValidateAudio(OfflineTtsGeneratedAudio generated, int ticket) {
+        if (Volatile.Read(ref epoch) != ticket) throw new OperationCanceledException();
+        // The native API returns a null pointer for failed/empty synthesis. Its
+        // managed wrapper otherwise throws NullReferenceException while reading it.
+        if (generated.Handle == IntPtr.Zero) throw new InvalidOperationException("De lokale stem heeft geen audio gemaakt. Controleer de spraakgegevens of installeer de app opnieuw.");
+        if (generated.NumSamples <= 0 || generated.SampleRate <= 0) throw new InvalidOperationException("De lokale stem heeft ongeldige audio gemaakt.");
     }
     static MemoryStream LocalAudio(string id, string text, double rate, int ticket) {
         var package = Catalog.FirstOrDefault(p => p.GetProperty("id").GetString() == id);
@@ -70,7 +92,7 @@ internal class Program {
         }
         var generated = localSynth!.GenerateWithCallback(text, (float)rate, 0, (samples, count) => Volatile.Read(ref epoch) == ticket ? 1 : 0);
         try {
-            if (Volatile.Read(ref epoch) != ticket) throw new OperationCanceledException();
+            ValidateAudio(generated, ticket);
             var bytes = new MemoryStream();
             using (var writer = new WaveFileWriter(bytes, WaveFormat.CreateIeeeFloatWaveFormat(generated.SampleRate, 1))) {
                 var samples = generated.Samples;
@@ -82,6 +104,7 @@ internal class Program {
     static async Task Speak(JsonElement c, int ticket) {
         var id=c.GetProperty("id").GetString()!;
         await Synthesis.WaitAsync();
+        var stage = "spraak maken";
         try {
             if (Volatile.Read(ref epoch) != ticket) return;
             var voiceId=c.GetProperty("voiceId").GetString() ?? "";
@@ -99,22 +122,31 @@ internal class Program {
             }
             lock(Gate) {
                 if(ticket!=epoch) { bytes.Dispose(); return; }
+                stage = "audio openen";
                 audio=bytes; reader=new WaveFileReader(audio); player=new WaveOutEvent(); player.Init(reader);
                 player.PlaybackStopped+=(_,e)=> { lock(Gate) { if(ticket==epoch && active==id) { active=""; Emit(new {kind=e.Exception==null?"finished":"error",id,message=e.Exception?.Message}); } } };
+                stage = "audio afspelen";
                 if (!paused) player.Play();
                 Emit(new {kind=paused?"paused":"started",id});
             }
         } catch(OperationCanceledException) { }
-        catch(Exception e) { lock(Gate) { if(ticket==epoch) { active=""; Emit(new {kind="error",id,message=e.Message}); } } }
+        catch(Exception e) { lock(Gate) { if(ticket==epoch) { active=""; Emit(new {kind="error",id,message=$"Fout bij {stage}: {e.Message}",details=e.ToString()}); } } }
         finally { Synthesis.Release(); }
     }
     static int Main(string[] args) {
         if (args.SequenceEqual(new[] { "--verify-models" })) {
             try {
+                var empty = new OfflineTtsGeneratedAudio(IntPtr.Zero);
+                try { ValidateAudio(empty, epoch); throw new Exception("Null synthesis was accepted"); }
+                catch (InvalidOperationException e) when (e.Message.Contains("geen audio")) { }
+                finally { empty.Dispose(); }
+                var localOnly = ListVoices(() => throw new NullReferenceException("System speech is not installed"));
+                if (localOnly.Count != Catalog.Length || localOnly.Any(v => !v.id.StartsWith("local:"))) throw new Exception("Downloaded voices require system speech");
                 foreach (var package in Catalog) {
                     var id = package.GetProperty("id").GetString()!;
                     foreach (var rate in new[] { .5, 1.3 }) {
-                        using var audio = LocalAudio(id, "I dag är det onsdag. I Växjö kostar tre äpplen 25 kronor.", rate, epoch);
+                        // Exercise the same worker-thread path used by real playback.
+                        using var audio = Task.Run(() => LocalAudio(id, "I dag regnar det i Sverige.", rate, epoch)).GetAwaiter().GetResult();
                         using var wave = new WaveFileReader(audio);
                         if (wave.TotalTime.TotalSeconds < .1 || wave.Length == 0) throw new Exception("Empty synthesis: " + id);
                         Console.WriteLine(id + " rate=" + rate + " duration=" + wave.TotalTime.TotalSeconds);
@@ -136,9 +168,7 @@ internal class Program {
                     var id=c.GetProperty("id").GetString() ?? "";
                     switch(c.GetProperty("action").GetString()) {
                         case "voices":
-                            var voices=SpeechSynthesizer.AllVoices.Where(v=>v.Language.Equals("sv-SE",StringComparison.OrdinalIgnoreCase)).Select(v=>new {id=v.Id,name=v.DisplayName,language=v.Language}).ToList();
-                            voices.AddRange(Catalog.Where(p=>Ready(p,true)).Select(p=>new {id=p.GetProperty("id").GetString()!,name=p.GetProperty("name").GetString()! + " · lokaal",language="sv-SE"}));
-                            Emit(new {kind="voices",id,voices}); break;
+                            Emit(new {kind="voices",id,voices=ListVoices()}); break;
                         case "speak": Stop(); active=id; var ticket=epoch; _=Task.Run(()=>Speak(c,ticket)); break;
                         case "stop": Stop(); break;
                         case "pause": paused=true; player?.Pause(); if(active!="") Emit(new {kind="paused",id=active}); break;
