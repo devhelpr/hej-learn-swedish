@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Media.SpeechSynthesis;
@@ -159,6 +160,15 @@ internal class Program {
         finally { Synthesis.Release(); }
     }
     static int Main(string[] args) {
+        // Rust writes UTF-8 JSON to a redirected pipe. Windows console defaults
+        // can use an OEM/ANSI code page, corrupting Swedish letters before TTS.
+        Console.InputEncoding = new UTF8Encoding(false, true);
+        Console.OutputEncoding = new UTF8Encoding(false, true);
+        if (args.SequenceEqual(new[] { "--verify-encoding" })) {
+            using var doc = JsonDocument.Parse(Console.ReadLine() ?? "");
+            Console.WriteLine(doc.RootElement.GetProperty("text").GetString());
+            return 0;
+        }
         if (args.SequenceEqual(new[] { "--verify-models" })) {
             try {
                 var pathCases = new Dictionary<string, string> {
@@ -182,7 +192,7 @@ internal class Program {
                     var id = voice.id;
                     foreach (var rate in new[] { .5, 1.3 }) {
                         // Exercise the same worker-thread path used by real playback.
-                        using var audio = Task.Run(() => LocalAudio(id, "I dag regnar det i Sverige.", rate, epoch)).GetAwaiter().GetResult();
+                        using var audio = Task.Run(() => LocalAudio(id, "Åsa går över ån. Vi äter äpplen på ön.", rate, epoch)).GetAwaiter().GetResult();
                         using var wave = new WaveFileReader(audio);
                         if (wave.TotalTime.TotalSeconds < .1 || wave.Length == 0) throw new Exception("Empty synthesis: " + id);
                         Console.WriteLine(id + " rate=" + rate + " duration=" + wave.TotalTime.TotalSeconds);

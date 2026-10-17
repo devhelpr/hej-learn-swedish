@@ -27,6 +27,8 @@ De modellen staan in de vaste [stemrelease `speech-models-v1`](https://github.co
 
 De voorbeeldtekst en gedownloade stemmen werken zonder Codex en zonder geïnstalleerde Windows-systeemstem. Een onbeschikbare Windows-spraakcomponent blokkeert de lokale stemmen niet. Bij een afspeelfout vermeldt de melding of spraak maken, audio openen of afspelen mislukt; **Technische details** toont de exception en recente runtime-diagnostiek voor probleemonderzoek. Deze diagnostiek blijft in het geheugen en wordt niet naar een logbestand geschreven.
 
+De Windows-helper leest en schrijft het JSON-lines-protocol expliciet als UTF-8, onafhankelijk van de Windows-codepagina. Dit voorkomt dat `å`, `ä` en `ö` vóór de synthese worden vervormd. CI test een echte subprocess-roundtrip met ruwe UTF-8 én JSON-escapes, inclusief samengestelde en ontlede Zweedse letters; de modeltests gebruiken ook Zweedse diakritische tekens. De hoorbare uitspraak blijft een aparte acceptatiecontrole.
+
 De Windows-helper normaliseert Tauri-paden met een `\\?\`-prefix naar gewone schijf- of UNC-paden voordat hij model-, token- en fonemizerpaden aan de native spraakengine doorgeeft. Dit voorkomt een onterechte melding dat `phontab` ontbreekt bij een geïnstalleerde app. De Windows-modeltest controleert zowel gewone als geprefixte paden met alle echte stemmen; opnieuw downloaden van modellen is voor deze padcorrectie niet nodig.
 
 ## Oefenen
@@ -69,7 +71,7 @@ Tests dekken stale spraakmeldingen, progressgrenzen, RSS-normalisatie, artikelhe
 
 Handmatige acceptatie op beide systemen: spreek een zin uit, pauzeer middenin, hervat, onderbreek met een andere zin, navigeer weg tijdens afspelen, verander tempo, pauzeer tussen twee zinnen en hervat. Controleer ondertiteling en offline hervatten na herstart. Controleer ontbrekende stem/CLI/login en beoordeel oefenteksten op alle niveaus tegen hun bron. Windows-runtime en Intel-macOS moeten op die platformen worden gecontroleerd.
 
-Voor beide echte Windows-modellen bouwt CI gecontroleerde stempackages en test zij de gepubliceerde helper zonder geluidsapparaat op synthese bij snelheid 0,5 en 1,3 plus annulering. Lokaal:
+Voor alle echte Windows-modellen bouwt CI gecontroleerde stempackages en test zij de gepubliceerde helper zonder geluidsapparaat op synthese bij snelheid 0,5 en 1,3 plus annulering. Lokaal:
 
 ```sh
 python -m pip install -r scripts/voice-requirements.txt
