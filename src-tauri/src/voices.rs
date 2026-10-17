@@ -17,6 +17,12 @@ pub struct FileSpec {
     pub sha256: String,
 }
 #[derive(Clone, Deserialize, Serialize)]
+pub struct Speaker {
+    pub id: String,
+    pub name: String,
+    pub speaker: u32,
+}
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Package {
     pub id: String,
@@ -26,6 +32,10 @@ pub struct Package {
     pub size: u64,
     pub sha256: String,
     pub files: BTreeMap<String, FileSpec>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub voices: Vec<Speaker>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +44,8 @@ pub struct AvailableVoice {
     pub package: Package,
     pub installed: bool,
     pub downloading: bool,
+    pub voice_id: String,
+    pub voice_count: usize,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,6 +166,12 @@ pub async fn list(
             .map(|p| AvailableVoice {
                 installed: installed(&root, &p),
                 downloading: busy.contains(&p.id),
+                voice_id: p
+                    .voices
+                    .first()
+                    .map(|v| v.id.clone())
+                    .unwrap_or_else(|| p.id.clone()),
+                voice_count: p.voices.len().max(1),
                 package: p,
             })
             .collect()
@@ -349,6 +367,8 @@ mod tests {
         let p = Package {
             id: "local:test".into(),
             name: "Test".into(),
+            engine: None,
+            voices: vec![],
             version: "1".into(),
             url: "https://example.invalid".into(),
             size,
@@ -405,18 +425,32 @@ mod tests {
     #[test]
     fn catalog_is_pinned_and_complete() {
         let entries = catalog();
-        assert_eq!(entries.len(), 2);
+        assert_eq!(entries.len(), 3);
         for p in entries {
             assert_eq!(p.sha256.len(), 64);
             assert!(p.size > 60_000_000);
             assert!(p.url.contains("/speech-models-v1/"));
-            for name in [
-                "model.onnx",
-                "config.json",
-                "tokens.txt",
-                "NOTICE.txt",
-                "LICENSE.txt",
-            ] {
+            let required = if p.engine.as_deref() == Some("supertonic") {
+                assert_eq!(p.voices.len(), 10);
+                for (i, voice) in p.voices.iter().enumerate() {
+                    assert_eq!(voice.id, format!("local:supertonic:{i}"));
+                    assert_eq!(voice.speaker, i as u32);
+                }
+                vec![
+                    "duration_predictor.int8.onnx",
+                    "text_encoder.int8.onnx",
+                    "vector_estimator.int8.onnx",
+                    "vocoder.int8.onnx",
+                    "tts.json",
+                    "unicode_indexer.bin",
+                    "voice.bin",
+                    "CODE-LICENSE.txt",
+                ]
+            } else {
+                assert!(p.voices.is_empty());
+                vec!["model.onnx", "config.json", "tokens.txt"]
+            };
+            for name in required.into_iter().chain(["NOTICE.txt", "LICENSE.txt"]) {
                 assert!(p.files.contains_key(name));
             }
         }

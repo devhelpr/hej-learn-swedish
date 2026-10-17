@@ -29,9 +29,13 @@ internal class Program {
     static IEnumerable<Voice> SystemVoices() => SpeechSynthesizer.AllVoices
         .Where(v=>v.Language.Equals("sv-SE",StringComparison.OrdinalIgnoreCase))
         .Select(v=>new Voice(v.Id,v.DisplayName,v.Language));
+    static IEnumerable<Voice> PackageVoices(JsonElement p) {
+        if (p.TryGetProperty("voices", out var voices)) return voices.EnumerateArray()
+            .Select(v => new Voice(v.GetProperty("id").GetString()!, v.GetProperty("name").GetString()! + " · lokaal", "sv-SE"));
+        return new[] { new Voice(p.GetProperty("id").GetString()!, p.GetProperty("name").GetString()! + " · lokaal", "sv-SE") };
+    }
     static List<Voice> ListVoices(Func<IEnumerable<Voice>>? systemVoices = null) {
-        var voices = Catalog.Where(p=>Ready(p,true)).Select(p=>new Voice(
-            p.GetProperty("id").GetString()!, p.GetProperty("name").GetString()! + " · lokaal", "sv-SE")).ToList();
+        var voices = Catalog.Where(p=>Ready(p,true)).SelectMany(PackageVoices).ToList();
         // Windows system speech is optional. Enumeration can fail on installations
         // without the speech components; keep downloaded voices available.
         try { voices.InsertRange(0, (systemVoices ?? SystemVoices)().ToList()); }
@@ -69,19 +73,33 @@ internal class Program {
         if (generated.NumSamples <= 0 || generated.SampleRate <= 0) throw new InvalidOperationException("De lokale stem heeft ongeldige audio gemaakt.");
     }
     static MemoryStream LocalAudio(string id, string text, double rate, int ticket) {
-        var package = Catalog.FirstOrDefault(p => p.GetProperty("id").GetString() == id);
+        var package = Catalog.FirstOrDefault(p => p.GetProperty("id").GetString() == id || PackageVoices(p).Any(v => v.id == id));
         if (package.ValueKind == JsonValueKind.Undefined || !Ready(package, false)) throw new Exception("Deze stem ontbreekt of is beschadigd. Installeer haar opnieuw bij Instellingen → Stemmen downloaden.");
         var dir = Folder(package);
-        var key = id + ":" + File.GetLastWriteTimeUtc(Path.Combine(dir, "installed.json")).Ticks;
+        var supertonic = package.TryGetProperty("engine", out var engine) && engine.GetString() == "supertonic";
+        var speaker = supertonic && package.TryGetProperty("voices", out var speakers)
+            ? speakers.EnumerateArray().Where(v => v.GetProperty("id").GetString() == id).Select(v => v.GetProperty("speaker").GetInt32()).FirstOrDefault() : 0;
+        var key = package.GetProperty("id").GetString() + ":" + File.GetLastWriteTimeUtc(Path.Combine(dir, "installed.json")).Ticks;
         if (loadedVoice != key) {
             if (!Ready(package, true)) throw new Exception("Deze stem is beschadigd. Installeer haar opnieuw bij Instellingen → Stemmen downloaden.");
             localSynth?.Dispose(); localSynth=null; loadedVoice="";
             var config = new OfflineTtsConfig();
-            config.Model.Vits.Model = NativeSpeechPath.Normalize(Path.Combine(dir, "model.onnx"));
-            config.Model.Vits.Tokens = NativeSpeechPath.Normalize(Path.Combine(dir, "tokens.txt"));
-            config.Model.Vits.DataDir = NativeSpeechPath.Normalize(Path.Combine(DataRoot, "espeak-ng-data"));
-            foreach (var file in new[] { "phondata", "phontab", "phonindex", "sv_dict", "lang/gmq/sv" }) {
-                if (!File.Exists(Path.Combine(config.Model.Vits.DataDir, file))) throw new Exception($"Spraakgegevens ontbreken ({file}). Herinstalleer de app.");
+            if (supertonic) {
+                string ModelPath(string file) => NativeSpeechPath.Normalize(Path.Combine(dir, file));
+                config.Model.Supertonic.DurationPredictor = ModelPath("duration_predictor.int8.onnx");
+                config.Model.Supertonic.TextEncoder = ModelPath("text_encoder.int8.onnx");
+                config.Model.Supertonic.VectorEstimator = ModelPath("vector_estimator.int8.onnx");
+                config.Model.Supertonic.Vocoder = ModelPath("vocoder.int8.onnx");
+                config.Model.Supertonic.TtsJson = ModelPath("tts.json");
+                config.Model.Supertonic.UnicodeIndexer = ModelPath("unicode_indexer.bin");
+                config.Model.Supertonic.VoiceStyle = ModelPath("voice.bin");
+            } else {
+                config.Model.Vits.Model = NativeSpeechPath.Normalize(Path.Combine(dir, "model.onnx"));
+                config.Model.Vits.Tokens = NativeSpeechPath.Normalize(Path.Combine(dir, "tokens.txt"));
+                config.Model.Vits.DataDir = NativeSpeechPath.Normalize(Path.Combine(DataRoot, "espeak-ng-data"));
+                foreach (var file in new[] { "phondata", "phontab", "phonindex", "sv_dict", "lang/gmq/sv" }) {
+                    if (!File.Exists(Path.Combine(config.Model.Vits.DataDir, file))) throw new Exception($"Spraakgegevens ontbreken ({file}). Herinstalleer de app.");
+                }
             }
             config.Model.NumThreads = Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
             config.Model.Provider = "cpu";
@@ -92,7 +110,12 @@ internal class Program {
             }
             localSynth = new OfflineTts(config); loadedVoice=key;
         }
-        var generated = localSynth!.GenerateWithCallback(text, (float)rate, 0, (samples, count) => Volatile.Read(ref epoch) == ticket ? 1 : 0);
+        if (Volatile.Read(ref epoch) != ticket) throw new OperationCanceledException();
+        var generation = new OfflineTtsGenerationConfig { Speed = (float)rate, Sid = speaker, NumSteps = 8 };
+        generation.Extra["lang"] = "sv";
+        var generated = supertonic
+            ? localSynth!.GenerateWithConfig(text, generation, (samples, count, progress, arg) => Volatile.Read(ref epoch) == ticket ? 1 : 0)
+            : localSynth!.GenerateWithCallback(text, (float)rate, 0, (samples, count) => Volatile.Read(ref epoch) == ticket ? 1 : 0);
         try {
             ValidateAudio(generated, ticket);
             var bytes = new MemoryStream();
@@ -154,9 +177,9 @@ internal class Program {
                 catch (InvalidOperationException e) when (e.Message.Contains("geen audio")) { }
                 finally { empty.Dispose(); }
                 var localOnly = ListVoices(() => throw new NullReferenceException("System speech is not installed"));
-                if (localOnly.Count != Catalog.Length || localOnly.Any(v => !v.id.StartsWith("local:"))) throw new Exception("Downloaded voices require system speech");
-                foreach (var package in Catalog) {
-                    var id = package.GetProperty("id").GetString()!;
+                if (localOnly.Count != Catalog.Sum(p => PackageVoices(p).Count()) || localOnly.Any(v => !v.id.StartsWith("local:"))) throw new Exception("Downloaded voices require system speech");
+                foreach (var voice in Catalog.SelectMany(PackageVoices)) {
+                    var id = voice.id;
                     foreach (var rate in new[] { .5, 1.3 }) {
                         // Exercise the same worker-thread path used by real playback.
                         using var audio = Task.Run(() => LocalAudio(id, "I dag regnar det i Sverige.", rate, epoch)).GetAwaiter().GetResult();
@@ -167,6 +190,23 @@ internal class Program {
                 }
                 try { using var audio = LocalAudio("local:nst", "Hej Sverige.", .85, epoch - 1); throw new Exception("Cancelled synthesis was accepted"); }
                 catch (OperationCanceledException) { }
+                try { using var audio = LocalAudio("local:supertonic:9", "Hej Sverige.", .85, epoch - 1); throw new Exception("Cancelled Supertonic synthesis was accepted"); }
+                catch (OperationCanceledException) { }
+                // Reject a result cancelled after CPU synthesis has started, then
+                // confirm a fresh request and a switch back to Piper still work.
+                using var started = new ManualResetEventSlim();
+                var ticket = epoch;
+                var interrupted = Task.Run(() => {
+                    started.Set();
+                    using var audio = LocalAudio("local:supertonic:9", string.Join(" ", Enumerable.Repeat("Sjuksköterskan kör till sjukhuset i Växjö.", 4)), .85, ticket);
+                });
+                if (!started.Wait(TimeSpan.FromSeconds(5))) throw new Exception("Synthesis worker did not start");
+                Thread.Sleep(20);
+                Interlocked.Increment(ref epoch);
+                try { interrupted.GetAwaiter().GetResult(); throw new Exception("Interrupted synthesis was accepted"); }
+                catch (OperationCanceledException) { }
+                using (var fresh = LocalAudio("local:supertonic:0", "Hej Sverige.", .85, epoch)) { }
+                using (var switched = LocalAudio("local:nst", "Hej Sverige.", .85, epoch)) { }
                 localSynth?.Dispose(); return 0;
             } catch (Exception e) { Console.Error.WriteLine(e); return 1; }
         }

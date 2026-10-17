@@ -63,6 +63,44 @@ def resources():
         shutil.copyfile(source, RESOURCES / source.name)
 
 
+SUPERTONIC_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-supertonic-3-tts-int8-2026-05-11.tar.bz2"
+SUPERTONIC_SHA = "82fa96f91c4ef8abaae3a14a3f4153facf88bed821d1f7331cec2700f432c427"
+
+
+def pack(key, name, stage):
+    files = {p.name: {"size": p.stat().st_size, "sha256": digest(p)} for p in sorted(stage.iterdir()) if p.is_file()}
+    asset = f"hej-voice-{key}-v1.zip"
+    archive = OUT / asset
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zipped:
+        for filename in files:
+            info = zipfile.ZipInfo(filename, date_time=(2026, 1, 1, 0, 0, 0))
+            info.create_system = 3
+            info.external_attr = 0o100644 << 16
+            zipped.writestr(info, (stage / filename).read_bytes())
+    return dict(id=f"local:{key}", name=name, version="1", url=f"https://github.com/devhelpr/hej-learn-swedish/releases/download/{RELEASE}/{asset}", size=archive.stat().st_size, sha256=digest(archive), files=files)
+
+
+def supertonic_package():
+    archive = OUT / "supertonic-original.tar.bz2"
+    fetch(SUPERTONIC_URL, archive, SUPERTONIC_SHA)
+    stage = OUT / "supertonic"
+    stage.mkdir(parents=True, exist_ok=True)
+    names = ["duration_predictor.int8.onnx", "text_encoder.int8.onnx", "vector_estimator.int8.onnx", "vocoder.int8.onnx", "tts.json", "unicode_indexer.bin", "voice.bin", "LICENSE"]
+    with tarfile.open(archive) as tar:
+        for name in names:
+            item = tar.getmember("sherpa-onnx-supertonic-3-tts-int8-2026-05-11/" + name)
+            if not item.isfile():
+                raise RuntimeError("Invalid Supertonic model file: " + name)
+            target = "CODE-LICENSE.txt" if name == "LICENSE" else name
+            with tar.extractfile(item) as source, (stage / target).open("wb") as dest:
+                shutil.copyfileobj(source, dest)
+    shutil.copyfile(ROOT / "scripts/voice-licenses/SUPERTONIC-MODEL-LICENSE.txt", stage / "LICENSE.txt")
+    (stage / "NOTICE.txt").write_text("Supertonic 3: Copyright Supertone Inc. Model weights: BigScience OpenRAIL-M; usage restrictions apply. Code: MIT.\nSource: https://huggingface.co/Supertone/supertonic-3/tree/3cadd1ee6394adea1bd021217a0e650ede09a323\nQuantized ONNX distribution by sherpa-onnx: " + SUPERTONIC_URL + "\nUpstream archive SHA-256: " + SUPERTONIC_SHA + "\nHej redistributes the quantized model without changing its weights.\n", encoding="utf-8", newline="\n")
+    entry = pack("supertonic", "Supertonic 3", stage)
+    entry.update(engine="supertonic", voices=[dict(id=f"local:supertonic:{i}", name=f"Supertonic {i+1}", speaker=i) for i in range(10)])
+    return entry
+
+
 def packages(update):
     import onnx
     entries = []
@@ -89,16 +127,8 @@ def packages(update):
         if key == "nst":
             shutil.copyfile(ROOT / "scripts/voice-licenses/CC0-1.0.txt", stage / "DATASET-LICENSE.txt")
         (stage / "NOTICE.txt").write_text(f"{name}: {credit}\nSource: https://huggingface.co/{repo}/tree/{revision}\nModel metadata adapted for sherpa-onnx; voice weights unchanged.\n", encoding="utf-8", newline="\n")
-        files = {p.name: {"size": p.stat().st_size, "sha256": digest(p)} for p in sorted(stage.iterdir()) if p.is_file()}
-        asset = f"hej-voice-{key}-v1.zip"
-        archive = OUT / asset
-        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zipped:
-            for filename in files:
-                info = zipfile.ZipInfo(filename, date_time=(2026, 1, 1, 0, 0, 0))
-                info.create_system = 3
-                info.external_attr = 0o100644 << 16
-                zipped.writestr(info, (stage / filename).read_bytes())
-        entries.append(dict(id=f"local:{key}", name=name, version="1", url=f"https://github.com/devhelpr/hej-learn-swedish/releases/download/{RELEASE}/{asset}", size=archive.stat().st_size, sha256=digest(archive), files=files))
+        entries.append(pack(key, name, stage))
+    entries.append(supertonic_package())
     content = json.dumps(entries, ensure_ascii=False, indent=2) + "\n"
     if update:
         CATALOG.write_text(content, encoding="utf-8", newline="\n")

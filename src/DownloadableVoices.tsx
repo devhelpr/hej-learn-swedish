@@ -5,6 +5,9 @@ import { listen } from "@tauri-apps/api/event";
 export interface DownloadableVoice {
   id: string;
   name: string;
+  voiceId?: string;
+  voiceCount?: number;
+  engine?: string;
   size: number;
   installed: boolean;
   downloading: boolean;
@@ -119,8 +122,30 @@ export default function DownloadableVoices({
           <span>
             {(v.size / 1_000_000).toFixed(1)} MB ·{" "}
             {v.installed ? "Geïnstalleerd" : "Niet geïnstalleerd"}
-            {selected === v.id ? " · Geselecteerd" : ""}
+            {selected === v.id || selected.startsWith(v.id + ":")
+              ? " · Geselecteerd"
+              : ""}
           </span>
+          {(v.voiceCount ?? 1) > 1 && (
+            <span>
+              {v.voiceCount} stemmen · één download. Kies na installatie een
+              stem in de keuzelijst.
+            </span>
+          )}
+          {v.engine === "supertonic" && (
+            <span>
+              Door dit model te downloaden en te gebruiken ga je akkoord met de{" "}
+              <a
+                href="https://huggingface.co/Supertone/supertonic-3/blob/main/LICENSE"
+                target="_blank"
+                rel="noreferrer"
+              >
+                OpenRAIL-M
+              </a>{" "}
+              licentie, inclusief de gebruiksbeperkingen in paragraaf 5 en
+              bijlage A. Test zelf de Zweedse uitspraak.
+            </span>
+          )}
           {v.downloading ? (
             <>
               <progress
@@ -158,7 +183,11 @@ export default function DownloadableVoices({
                 <button
                   className="primary"
                   onClick={() =>
-                    void onSelectTest(v.id).catch((e) =>
+                    void onSelectTest(
+                      selected.startsWith(v.id + ":")
+                        ? selected
+                        : (v.voiceId ?? v.id),
+                    ).catch((e) =>
                       setErrors((errors) => ({ ...errors, [v.id]: String(e) })),
                     )
                   }

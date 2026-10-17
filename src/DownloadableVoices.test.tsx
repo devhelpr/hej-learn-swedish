@@ -89,6 +89,46 @@ describe("downloadable voices", () => {
     );
     expect(onSelectTest).toHaveBeenCalledWith("local:alma");
   });
+  it("tests a shared pack speaker and retains an already selected speaker", async () => {
+    backend.invoke.mockResolvedValue([
+      {
+        id: "local:supertonic",
+        name: "Supertonic 3",
+        size: 145313450,
+        installed: true,
+        downloading: false,
+        voiceId: "local:supertonic:0",
+        voiceCount: 10,
+        engine: "supertonic",
+      },
+    ]);
+    const onSelectTest = vi.fn(async () => {});
+    const view = render(
+      <DownloadableVoices
+        selected="local:nst"
+        onInstalled={async () => {}}
+        onSelectTest={onSelectTest}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Selecteren en testen" }),
+    );
+    expect(onSelectTest).toHaveBeenLastCalledWith("local:supertonic:0");
+    expect(screen.getByText(/10 stemmen/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "OpenRAIL-M" })).toBeTruthy();
+    view.rerender(
+      <DownloadableVoices
+        selected="local:supertonic:7"
+        onInstalled={async () => {}}
+        onSelectTest={onSelectTest}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Selecteren en testen" }),
+    );
+    expect(onSelectTest).toHaveBeenLastCalledWith("local:supertonic:7");
+    expect(screen.getByText(/Geselecteerd/)).toBeTruthy();
+  });
   it("cancels and allows retry after interrupted download", async () => {
     let reject: (e: string) => void = () => {};
     backend.invoke.mockImplementation(async (cmd: string) => {

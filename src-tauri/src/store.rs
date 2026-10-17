@@ -181,6 +181,19 @@ mod tests {
             .is_err());
         s.save_settings(&Settings::default()).unwrap();
         assert_eq!(s.settings().unwrap().rate, 0.85);
+        for id in [
+            "Microsoft-Swedish-voice",
+            "local:alma",
+            "local:nst",
+            "local:supertonic:7",
+        ] {
+            s.save_settings(&Settings {
+                voice_id: id.into(),
+                ..Settings::default()
+            })
+            .unwrap();
+            assert_eq!(s.settings().unwrap().voice_id, id);
+        }
     }
     fn legacy_lesson() -> Lesson {
         serde_json::from_value(serde_json::json!({

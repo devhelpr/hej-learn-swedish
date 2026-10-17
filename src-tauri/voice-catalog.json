@@ -62,5 +62,108 @@
         "sha256": "42d1a69ed2b91a51928a711aa228ed9f3dc021c6d359a3e9c4f37eb1d20f80bd"
       }
     }
+  },
+  {
+    "id": "local:supertonic",
+    "name": "Supertonic 3",
+    "version": "1",
+    "url": "https://github.com/devhelpr/hej-learn-swedish/releases/download/speech-models-v1/hej-voice-supertonic-v1.zip",
+    "size": 145313496,
+    "sha256": "196e77c6433f03dbf1b568cfe3ca0a4a9e41a0a85e544edd52eba9018e213280",
+    "files": {
+      "CODE-LICENSE.txt": {
+        "size": 1070,
+        "sha256": "0dfe0d0ba84416fe3879d9a34f4909d8d0137c78d1e95834177b0414ac096fa2"
+      },
+      "LICENSE.txt": {
+        "size": 15007,
+        "sha256": "0d944a9110fed9a9602d60e0423a272903e7bd21ab060490774efc77c2275e9f"
+      },
+      "NOTICE.txt": {
+        "size": 537,
+        "sha256": "c7930234a8b8ef716c4f79f03504727058816f8693896d4ba338df474c444854"
+      },
+      "duration_predictor.int8.onnx": {
+        "size": 3700147,
+        "sha256": "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db"
+      },
+      "text_encoder.int8.onnx": {
+        "size": 36416150,
+        "sha256": "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff"
+      },
+      "tts.json": {
+        "size": 8253,
+        "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09"
+      },
+      "unicode_indexer.bin": {
+        "size": 262144,
+        "sha256": "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30"
+      },
+      "vector_estimator.int8.onnx": {
+        "size": 78400833,
+        "sha256": "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd"
+      },
+      "vocoder.int8.onnx": {
+        "size": 25991073,
+        "sha256": "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152"
+      },
+      "voice.bin": {
+        "size": 517168,
+        "sha256": "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8"
+      }
+    },
+    "engine": "supertonic",
+    "voices": [
+      {
+        "id": "local:supertonic:0",
+        "name": "Supertonic 1",
+        "speaker": 0
+      },
+      {
+        "id": "local:supertonic:1",
+        "name": "Supertonic 2",
+        "speaker": 1
+      },
+      {
+        "id": "local:supertonic:2",
+        "name": "Supertonic 3",
+        "speaker": 2
+      },
+      {
+        "id": "local:supertonic:3",
+        "name": "Supertonic 4",
+        "speaker": 3
+      },
+      {
+        "id": "local:supertonic:4",
+        "name": "Supertonic 5",
+        "speaker": 4
+      },
+      {
+        "id": "local:supertonic:5",
+        "name": "Supertonic 6",
+        "speaker": 5
+      },
+      {
+        "id": "local:supertonic:6",
+        "name": "Supertonic 7",
+        "speaker": 6
+      },
+      {
+        "id": "local:supertonic:7",
+        "name": "Supertonic 8",
+        "speaker": 7
+      },
+      {
+        "id": "local:supertonic:8",
+        "name": "Supertonic 9",
+        "speaker": 8
+      },
+      {
+        "id": "local:supertonic:9",
+        "name": "Supertonic 10",
+        "speaker": 9
+      }
+    ]
   }
 ]
