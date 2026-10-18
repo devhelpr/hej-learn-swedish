@@ -1084,3 +1084,134 @@ describe("local speech without optional services", () => {
     expect(screen.queryByText("Technische details")).toBeNull();
   });
 });
+
+describe("exercise questions", () => {
+  async function openSaved() {
+    await setup();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
+    );
+    await screen.findByRole("checkbox", { name: "Gedaan" });
+  }
+  it("sends the saved exercise and active sentence, shows the answer and restores focus", async () => {
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "ask_exercise_question")
+        return { answer: "Dit is de Zweedse woordvolgorde." };
+      return previous(cmd, args);
+    });
+    await openSaved();
+    const opener = screen.getByRole("button", { name: "Vraag over oefening" });
+    opener.focus();
+    fireEvent.click(opener);
+    const modal = screen.getByRole("dialog");
+    expect(within(modal).getByText(/Zin 4 als context/)).toBeTruthy();
+    expect(
+      within(modal).getByRole("button", { name: "Vraag stellen" }),
+    ).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Waarom deze woordvolgorde?" },
+    });
+    fireEvent.click(
+      within(modal).getByRole("button", { name: "Vraag stellen" }),
+    );
+    expect(
+      await screen.findByText("Dit is de Zweedse woordvolgorde."),
+    ).toBeTruthy();
+    expect(backend.invoke).toHaveBeenCalledWith("ask_exercise_question", {
+      id: "saved",
+      question: "Waarom deze woordvolgorde?",
+      sentenceIndex: 3,
+    });
+    fireEvent(modal, new Event("cancel", { cancelable: true }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+  it("keeps the question editable after a relevance rejection and supports retry", async () => {
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "ask_exercise_question") {
+        if (args.question === "Wat betekent blå?")
+          return { answer: "Blå betekent blauw." };
+        throw new Error("Deze vraag past niet bij de oefening.");
+      }
+      return previous(cmd, args);
+    });
+    await openSaved();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Vraag over oefening" }),
+    );
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Wat is het weer morgen?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vraag stellen" }));
+    expect(await screen.findByRole("alert")).toHaveProperty(
+      "textContent",
+      "Deze vraag past niet bij de oefening.",
+    );
+    expect(screen.getByLabelText("Je vraag")).toHaveProperty(
+      "value",
+      "Wat is het weer morgen?",
+    );
+    expect(
+      screen.getByRole("button", { name: "Vraag stellen" }),
+    ).toHaveProperty("disabled", false);
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Wat betekent blå?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vraag stellen" }));
+    expect(await screen.findByText("Blå betekent blauw.")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("locks closing while answering and preserves the draft after cancellation", async () => {
+    let reject!: (e: Error) => void;
+    const pending = new Promise((_, r) => {
+      reject = r;
+    });
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "ask_exercise_question") return pending;
+      if (cmd === "cancel_generation") {
+        reject(new Error("Generatie geannuleerd."));
+        return;
+      }
+      return previous(cmd, args);
+    });
+    await openSaved();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Vraag over oefening" }),
+    );
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Wat betekent dit?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vraag stellen" }));
+    await waitFor(() =>
+      expect(
+        backend.invoke.mock.calls.some(
+          ([cmd]) => cmd === "ask_exercise_question",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      screen.getByRole("button", { name: "Vraagdialoog sluiten" }),
+    ).toHaveProperty("disabled", true);
+    fireEvent(
+      screen.getByRole("dialog"),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Annuleren",
+      }),
+    );
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Je vraag")).toHaveProperty(
+      "value",
+      "Wat betekent dit?",
+    );
+    expect(
+      screen.getByRole("button", { name: "Vraag stellen" }),
+    ).toHaveProperty("disabled", false);
+  });
+});

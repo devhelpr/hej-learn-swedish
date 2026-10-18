@@ -935,14 +935,28 @@ footer {
   overflow-wrap: anywhere;
 }
 .lesson-detail .page-title {
+  align-items: center;
   flex-wrap: wrap;
   gap: 16px;
 }
 .lesson-actions {
+  flex: 1 1 100%;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+.exercise-question-action {
+  margin-left: auto;
+}
+.lesson-actions label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+.lesson-actions input[type="checkbox"] {
+  margin: 0;
 }
 .reading-switch {
   margin: 24px 0 16px;
@@ -1118,4 +1132,24 @@ footer {
 }
 .custom-dialog textarea {
   min-height: 220px;
+}
+
+.question-dialog textarea {
+  min-height: 110px;
+}
+.question-context {
+  background: #f6f7f2;
+  border-left: 3px solid var(--green);
+  padding: 12px 16px;
+  margin: 16px 0;
+}
+.question-context span {
+  font-size: 13px;
+}
+.question-context p {
+  margin-bottom: 0;
+}
+.question-answer p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

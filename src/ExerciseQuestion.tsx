@@ -1,0 +1,164 @@
+import { useEffect, useRef, useState } from "react";
+import type { Lesson } from "./types";
+
+interface Props {
+  lesson: Lesson;
+  sentenceIndex: number;
+  onAsk: (question: string) => Promise<{ answer: string }>;
+  onCancel: () => Promise<void>;
+  onClose: () => void;
+}
+
+export default function ExerciseQuestion({
+  lesson,
+  sentenceIndex,
+  onAsk,
+  onCancel,
+  onClose,
+}: Props) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const questionInput = useRef<HTMLTextAreaElement>(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const lock = useRef(false);
+  const cancelled = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const element = dialog.current!;
+    element.showModal();
+    questionInput.current?.focus();
+    return () => {
+      mounted.current = false;
+      element.close();
+    };
+  }, []);
+  const close = () => {
+    if (!lock.current) onClose();
+  };
+  return (
+    <dialog
+      ref={dialog}
+      className="custom-dialog composer question-dialog"
+      aria-labelledby="question-heading"
+      onCancel={(event) => {
+        event.preventDefault();
+        close();
+      }}
+    >
+      <div className="section-toolbar">
+        <h2 id="question-heading">Vraag over deze oefening</h2>
+        <button
+          className="quiet"
+          aria-label="Vraagdialoog sluiten"
+          disabled={busy}
+          onClick={close}
+        >
+          ×
+        </button>
+      </div>
+      <p>
+        {lesson.title} · {lesson.level}
+      </p>
+      <p id="question-help">
+        Stel een vraag over de tekst, vertaling, grammatica of uitspraak. Vragen
+        buiten de oefening kun je aan ChatGPT stellen.
+      </p>
+      <div className="question-context">
+        <span>
+          Zin {sentenceIndex + 1} als context · de hele oefening wordt
+          meegenomen
+        </span>
+        <p lang="sv">{lesson.sentences[sentenceIndex]?.sv}</p>
+      </div>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (lock.current || !question.trim()) return;
+          lock.current = true;
+          cancelled.current = false;
+          setBusy(true);
+          setError("");
+          setAnswer("");
+          try {
+            const result = await onAsk(question.trim());
+            if (cancelled.current) throw new Error("Vraag geannuleerd.");
+            if (mounted.current) setAnswer(result.answer);
+          } catch (e) {
+            if (mounted.current)
+              setError(e instanceof Error ? e.message : String(e));
+          } finally {
+            lock.current = false;
+            if (mounted.current) {
+              setBusy(false);
+              setCancelling(false);
+            }
+          }
+        }}
+      >
+        <label htmlFor="exercise-question">Je vraag</label>
+        <textarea
+          id="exercise-question"
+          ref={questionInput}
+          aria-describedby="question-help"
+          maxLength={2000}
+          placeholder="Bijvoorbeeld: waarom staat het werkwoord hier vóór het onderwerp?"
+          value={question}
+          disabled={busy}
+          onChange={(e) => {
+            setQuestion(e.target.value);
+            setAnswer("");
+            setError("");
+          }}
+        />
+        <div className="section-toolbar">
+          <span className="fineprint">{question.length} / 2000 tekens</span>
+          <button
+            className="primary"
+            disabled={busy || !question.trim()}
+            type="submit"
+          >
+            Vraag stellen
+          </button>
+          {busy && (
+            <button
+              className="quiet"
+              type="button"
+              disabled={cancelling}
+              onClick={async () => {
+                cancelled.current = true;
+                setCancelling(true);
+                try {
+                  await onCancel();
+                } catch (e) {
+                  setError(String(e));
+                  setCancelling(false);
+                }
+              }}
+            >
+              {cancelling ? "Annuleren…" : "Annuleren"}
+            </button>
+          )}
+        </div>
+      </form>
+      {busy && <p role="status">Je vraag wordt gecontroleerd en beantwoord…</p>}
+      {error && <p role="alert">{error}</p>}
+      {answer && (
+        <section
+          className="question-answer"
+          role="status"
+          aria-label="Antwoord"
+        >
+          <h3>Antwoord</h3>
+          <p>{answer}</p>
+        </section>
+      )}
+      <p className="fineprint">
+        AI kan fouten maken. Vragen en antwoorden worden niet opgeslagen.
+      </p>
+    </dialog>
+  );
+}

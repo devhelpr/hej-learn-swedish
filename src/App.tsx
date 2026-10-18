@@ -12,6 +12,7 @@ import {
 } from "./types";
 import { demo } from "./demo";
 import LanguageNotes from "./LanguageNotes";
+import ExerciseQuestion from "./ExerciseQuestion";
 import LessonBrowser from "./LessonBrowser";
 import DownloadableVoices from "./DownloadableVoices";
 import { emptyFilter, type LessonFilter } from "./lesson-browser";
@@ -63,6 +64,10 @@ export default function App() {
   } | null>(null);
   const generationLock = useRef(false);
   const generationCancelled = useRef(false);
+  const [questionTarget, setQuestionTarget] = useState<{
+    lesson: Lesson;
+    sentenceIndex: number;
+  } | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [customSource, setCustomSource] = useState<NewsItem | null>(null);
   const [failedNews, setFailedNews] = useState<NewsItem | null>(null);
@@ -492,6 +497,25 @@ export default function App() {
     setFailedNews(null);
     setError("");
   };
+  const askExerciseQuestion = async (question: string) => {
+    if (generationLock.current || !questionTarget)
+      throw new Error("Wacht tot de lopende aanvraag klaar is.");
+    generationLock.current = true;
+    generationCancelled.current = false;
+    setGenerating(true);
+    try {
+      await invoke("save_settings", { settings: settingsRef.current });
+      if (generationCancelled.current) throw new Error("Vraag geannuleerd.");
+      return await invoke<{ answer: string }>("ask_exercise_question", {
+        id: questionTarget.lesson.id,
+        question,
+        sentenceIndex: questionTarget.sentenceIndex,
+      });
+    } finally {
+      generationLock.current = false;
+      if (generationMounted.current) setGenerating(false);
+    }
+  };
   const addLanguageNotes = async (grammar = false) => {
     const field = grammar ? "grammarNotes" : "languageNotes";
     if (generationLock.current) return;
@@ -731,7 +755,19 @@ export default function App() {
             )}
           </div>
         )}
-        {generating && !customOpen && generationStatus}
+        {generating && !customOpen && !questionTarget && generationStatus}
+        {questionTarget && (
+          <ExerciseQuestion
+            lesson={questionTarget.lesson}
+            sentenceIndex={questionTarget.sentenceIndex}
+            onAsk={askExerciseQuestion}
+            onCancel={async () => {
+              generationCancelled.current = true;
+              await invoke("cancel_generation");
+            }}
+            onClose={() => setQuestionTarget(null)}
+          />
+        )}
         <dialog
           ref={dialog}
           className="custom-dialog composer"
@@ -953,6 +989,30 @@ export default function App() {
                       <span className="pill">
                         {player.index + 1} / {lesson.sentences.length}
                       </span>
+                      <button
+                        className="quiet exercise-question-action"
+                        disabled={
+                          !desktop ||
+                          !settingsReady ||
+                          generating ||
+                          lesson.id === "demo"
+                        }
+                        title={
+                          lesson.id === "demo"
+                            ? "Beschikbaar bij opgeslagen oefeningen"
+                            : !desktop
+                              ? "Open de desktopapp om vragen te stellen"
+                              : undefined
+                        }
+                        onClick={() =>
+                          setQuestionTarget({
+                            lesson,
+                            sentenceIndex: player.index,
+                          })
+                        }
+                      >
+                        Vraag over oefening
+                      </button>
                     </div>
                   </div>
                   <section className="player-panel">
