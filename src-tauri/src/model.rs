@@ -37,6 +37,8 @@ pub struct Lesson {
     pub sentences: Vec<SentencePair>,
     #[serde(default)]
     pub language_notes: Vec<LanguageNote>,
+    #[serde(default)]
+    pub grammar_notes: Vec<LanguageNote>,
     pub progress: Progress,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -81,6 +83,21 @@ pub fn validate_language_notes(
     }
     Ok(())
 }
+pub fn validate_grammar_notes(
+    notes: &[LanguageNote],
+    sentences: &[SentencePair],
+) -> Result<(), String> {
+    validate_language_notes(notes, sentences).map_err(|e| {
+        e.replace("taalbijzonderheden", "grammatica-elementen")
+            .replace("taalpunt", "grammaticapunt")
+            .replace("taalpunten", "grammaticapunten")
+    })
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GeneratedGrammar {
+    pub grammar_notes: Vec<LanguageNote>,
+}
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GeneratedNotes {
@@ -120,6 +137,7 @@ impl Default for Settings {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Generated {
+    pub grammar_notes: Vec<LanguageNote>,
     pub title: String,
     pub sentences: Vec<SentencePair>,
     pub language_notes: Vec<LanguageNote>,
@@ -158,7 +176,8 @@ impl Generated {
         }) {
             return Err("Codex leverde een leeg of te lang zinpaar.".into());
         }
-        validate_language_notes(&self.language_notes, &self.sentences)
+        validate_language_notes(&self.language_notes, &self.sentences)?;
+        validate_grammar_notes(&self.grammar_notes, &self.sentences)
     }
 }
 #[cfg(test)]
@@ -180,6 +199,7 @@ mod tests {
     fn rejects_incomplete_output() {
         let g = Generated {
             title: "Titel".into(),
+            grammar_notes: test_notes("Det regnar."),
             language_notes: vec![],
             sentences: vec![],
         };
@@ -192,6 +212,7 @@ mod tests {
     fn rejects_sentences_too_long_for_selected_level() {
         let g = Generated {
             title: "Nyheter".into(),
+            grammar_notes: test_notes("Det regnar."),
             language_notes: test_notes("Det regnar."),
             sentences: vec![SentencePair {
                 sv: vec!["ord"; 13].join(" "),
@@ -205,6 +226,7 @@ mod tests {
     fn validates_pairs() {
         let mut g = Generated {
             title: "Nyheter".into(),
+            grammar_notes: test_notes("Det regnar."),
             language_notes: test_notes("Det regnar."),
             sentences: (0..12)
                 .map(|_| SentencePair {

@@ -1,6 +1,7 @@
 import type { Lesson } from "./types";
 interface Props {
   lesson: Lesson;
+  grammar?: boolean;
   generating: boolean;
   loading: boolean;
   canGenerate: boolean;
@@ -8,24 +9,30 @@ interface Props {
 }
 export default function LanguageNotes({
   lesson,
+  grammar = false,
   generating,
   loading,
   canGenerate,
   onGenerate,
 }: Props) {
-  const notes = lesson.languageNotes ?? [];
+  const notes = (grammar ? lesson.grammarNotes : lesson.languageNotes) ?? [];
+  const title = grammar ? "Grammatica" : "Bijzonderheden taal";
+  const subject = grammar ? "grammatica-uitleg" : "taalbijzonderheden";
+  const action = grammar ? "Grammatica-uitleg" : "Taalbijzonderheden";
   return (
-    <section className="language-notes" aria-label="Bijzonderheden taal">
-      <h2>Bijzonderheden taal · {lesson.level}</h2>
+    <section className="language-notes" aria-label={title}>
+      <h2>
+        {title} · {lesson.level}
+      </h2>
       <p className="language-intro">
-        Vijf elementen uit deze oefentekst, uitgelegd op jouw niveau.
+        Vijf {grammar ? "grammatica-elementen" : "elementen"} uit deze
+        oefentekst, uitgelegd op jouw niveau.
       </p>
       {notes.length === 0 ? (
         <div className="language-empty">
           <p>
-            Deze oefening heeft nog geen taalbijzonderheden. Voeg vijf
-            uitlegpunten toe op basis van de opgeslagen tekst en het niveau{" "}
-            {lesson.level}.
+            Deze oefening heeft nog geen {subject}. Voeg vijf uitlegpunten toe
+            op basis van de opgeslagen tekst en het niveau {lesson.level}.
           </p>
           <button
             className="primary"
@@ -33,8 +40,10 @@ export default function LanguageNotes({
             onClick={onGenerate}
           >
             {loading
-              ? "Taalbijzonderheden worden gemaakt…"
-              : "Taalbijzonderheden toevoegen"}
+              ? grammar
+                ? "Grammatica-uitleg wordt gemaakt…"
+                : "Taalbijzonderheden worden gemaakt…"
+              : `${action} toevoegen`}
           </button>
           <p className="fineprint">
             Toevoegen vraagt internet en Codex-toegang. Daarna blijft de uitleg

@@ -462,7 +462,22 @@ describe("exercise workspace", () => {
   });
 });
 
-describe("language notes", () => {
+describe.each([
+  {
+    field: "languageNotes",
+    title: "Bijzonderheden taal",
+    command: "generate_language_notes",
+    add: "Taalbijzonderheden toevoegen",
+    loading: "Taalbijzonderheden worden gemaakt…",
+  },
+  {
+    field: "grammarNotes",
+    title: "Grammatica",
+    command: "generate_grammar_notes",
+    add: "Grammatica-uitleg toevoegen",
+    loading: "Grammatica-uitleg wordt gemaakt…",
+  },
+] as const)("$title", ({ field, title, command, add, loading }) => {
   async function openLegacy(archived = false) {
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
@@ -471,7 +486,7 @@ describe("language notes", () => {
           {
             ...demo,
             id: "saved",
-            languageNotes: undefined,
+            [field]: undefined,
             archivedAt: archived ? "2026-10-11T12:00:00Z" : null,
             progress: { lastSentence: 3, completed: false },
           },
@@ -489,10 +504,8 @@ describe("language notes", () => {
         await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
       );
     }
-    fireEvent.click(
-      screen.getByRole("button", { name: "Bijzonderheden taal" }),
-    );
-    await screen.findByRole("button", { name: "Taalbijzonderheden toevoegen" });
+    fireEvent.click(screen.getByRole("button", { name: title }));
+    await screen.findByRole("button", { name: add });
   }
   it("shows five demo notes with marked Swedish fragments and Dutch translations without stopping speech", async () => {
     await setup();
@@ -502,16 +515,12 @@ describe("language notes", () => {
     const stops = backend.invoke.mock.calls.filter(
       ([cmd, args]) => cmd === "speech_control" && args.action === "stop",
     ).length;
-    fireEvent.click(
-      screen.getByRole("button", { name: "Bijzonderheden taal" }),
-    );
-    const panel = screen.getByRole("region", { name: "Bijzonderheden taal" });
+    fireEvent.click(screen.getByRole("button", { name: title }));
+    const panel = screen.getByRole("region", { name: title });
     expect(within(panel).getAllByRole("listitem")).toHaveLength(5);
     expect(panel.querySelectorAll("mark")).toHaveLength(5);
     expect(within(panel).getByText(demo.sentences[0].nl)).toBeTruthy();
-    expect(
-      within(panel).getByText(demo.languageNotes![0].explanation),
-    ).toBeTruthy();
+    expect(within(panel).getByText(demo[field]![0].explanation)).toBeTruthy();
     expect(
       backend.invoke.mock.calls.filter(
         ([cmd, args]) => cmd === "speech_control" && args.action === "stop",
@@ -531,23 +540,19 @@ describe("language notes", () => {
     });
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
-      if (cmd === "generate_language_notes") return pending;
+      if (cmd === command) return pending;
       return previous(cmd, args);
     });
     await openLegacy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: add }));
     await waitFor(() =>
-      expect(
-        backend.invoke.mock.calls.some(
-          ([cmd]) => cmd === "generate_language_notes",
-        ),
-      ).toBe(true),
+      expect(backend.invoke.mock.calls.some(([cmd]) => cmd === command)).toBe(
+        true,
+      ),
     );
     expect(
       screen.getByRole("button", {
-        name: "Taalbijzonderheden worden gemaakt…",
+        name: loading,
       }),
     ).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("button", { name: "Volgende zin" }));
@@ -573,30 +578,24 @@ describe("language notes", () => {
       screen.getByRole("button", { name: /Hervat bij zin 5/ }),
     ).toBeTruthy();
     expect(
-      within(
-        screen.getByRole("region", { name: "Bijzonderheden taal" }),
-      ).getAllByRole("listitem"),
-    ).toHaveLength(5);
-    expect(
-      screen.queryByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    ).toBeNull();
-    expect(
-      backend.invoke.mock.calls.filter(
-        ([cmd]) => cmd === "generate_language_notes",
+      within(screen.getByRole("region", { name: title })).getAllByRole(
+        "listitem",
       ),
+    ).toHaveLength(5);
+    expect(screen.queryByRole("button", { name: add })).toBeNull();
+    expect(
+      backend.invoke.mock.calls.filter(([cmd]) => cmd === command),
     ).toHaveLength(1);
   });
   it("supports adding notes directly to an archived lesson", async () => {
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
-      if (cmd === "generate_language_notes") return { ...demo, id: "saved" };
+      if (cmd === command) return { ...demo, id: "saved" };
       return previous(cmd, args);
     });
     await openLegacy(true);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    );
-    await screen.findByRole("heading", { name: demo.languageNotes![0].title });
+    fireEvent.click(screen.getByRole("button", { name: add }));
+    await screen.findByRole("heading", { name: demo[field]![0].title });
     expect(
       screen.getByRole("button", { name: "Terug naar actieve oefeningen" }),
     ).toBeTruthy();
@@ -605,7 +604,7 @@ describe("language notes", () => {
     let attempts = 0;
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
-      if (cmd === "generate_language_notes") {
+      if (cmd === command) {
         if (++attempts === 1)
           throw new Error("Codex leverde ongeldige taalbijzonderheden.");
         return { ...demo, id: "saved" };
@@ -613,19 +612,17 @@ describe("language notes", () => {
       return previous(cmd, args);
     });
     await openLegacy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: add }));
     await screen.findByRole("alert");
     expect(
       screen.getByRole("button", { name: /Hervat bij zin 4/ }),
     ).toBeTruthy();
     const retry = screen.getByRole("button", {
-      name: "Taalbijzonderheden toevoegen",
+      name: add,
     });
     expect(retry).toHaveProperty("disabled", false);
     fireEvent.click(retry);
-    await screen.findByRole("heading", { name: demo.languageNotes![0].title });
+    await screen.findByRole("heading", { name: demo[field]![0].title });
     expect(attempts).toBe(2);
   });
   it("cancels note generation without adding partial output", async () => {
@@ -635,7 +632,7 @@ describe("language notes", () => {
     });
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
-      if (cmd === "generate_language_notes") return pending;
+      if (cmd === command) return pending;
       if (cmd === "cancel_generation") {
         reject(new Error("Generatie geannuleerd."));
         return;
@@ -643,24 +640,21 @@ describe("language notes", () => {
       return previous(cmd, args);
     });
     await openLegacy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: add }));
     await waitFor(() =>
-      expect(
-        backend.invoke.mock.calls.some(
-          ([cmd]) => cmd === "generate_language_notes",
-        ),
-      ).toBe(true),
+      expect(backend.invoke.mock.calls.some(([cmd]) => cmd === command)).toBe(
+        true,
+      ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
     expect(await screen.findByRole("alert")).toHaveProperty(
       "textContent",
       "Generatie geannuleerd.×",
     );
-    expect(
-      screen.getByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    ).toHaveProperty("disabled", false);
+    expect(screen.getByRole("button", { name: add })).toHaveProperty(
+      "disabled",
+      false,
+    );
     expect(
       screen.getByRole("button", { name: /Hervat bij zin 4/ }),
     ).toBeTruthy();
@@ -676,24 +670,20 @@ describe("language notes", () => {
       if (cmd === "save_settings") return pending;
       return previous(cmd, args);
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Taalbijzonderheden toevoegen" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: add }));
     fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
     await act(async () => {
       resolve();
     });
     await screen.findByRole("alert");
-    expect(
-      backend.invoke.mock.calls.some(
-        ([cmd]) => cmd === "generate_language_notes",
-      ),
-    ).toBe(false);
+    expect(backend.invoke.mock.calls.some(([cmd]) => cmd === command)).toBe(
+      false,
+    );
   });
   it("reads persisted notes offline without requesting Codex", async () => {
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
-      if (cmd === "generate_language_notes" || cmd === "generate_lesson")
+      if (cmd === command || cmd === "generate_lesson")
         throw new Error("Offline");
       return previous(cmd, args);
     });
@@ -701,19 +691,15 @@ describe("language notes", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Bijzonderheden taal" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: title }));
     expect(
-      within(
-        screen.getByRole("region", { name: "Bijzonderheden taal" }),
-      ).getAllByRole("listitem"),
-    ).toHaveLength(5);
-    expect(
-      backend.invoke.mock.calls.some(
-        ([cmd]) => cmd === "generate_language_notes",
+      within(screen.getByRole("region", { name: title })).getAllByRole(
+        "listitem",
       ),
-    ).toBe(false);
+    ).toHaveLength(5);
+    expect(backend.invoke.mock.calls.some(([cmd]) => cmd === command)).toBe(
+      false,
+    );
   });
 });
 

@@ -24,6 +24,7 @@ export interface Lesson {
   createdAt: string;
   sentences: SentencePair[];
   languageNotes?: LanguageNote[];
+  grammarNotes?: LanguageNote[];
   progress: Progress;
 }
 export interface NewsItem {

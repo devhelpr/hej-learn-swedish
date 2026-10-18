@@ -7,6 +7,43 @@ export const demo: Lesson = {
   level: "A1",
   createdAt: "2026-10-10T10:00:00Z",
   progress: { lastSentence: 0, completed: false },
+  grammarNotes: [
+    {
+      title: "Inversie na een tijdsbepaling",
+      sentenceIndex: 0,
+      excerpt: "I dag regnar det",
+      explanation:
+        "In een Zweedse mededelende hoofdzin staat het vervoegde werkwoord op de tweede zinsplaats. I dag staat vooraan als één zinsdeel, dus komt regnar vóór het onderwerp det.",
+    },
+    {
+      title: "Een onpersoonlijk onderwerp",
+      sentenceIndex: 1,
+      excerpt: "Det är kallt",
+      explanation:
+        "Bij een beschrijving van het weer gebruik je det als onderwerp, zoals het in het Nederlands. Het bijvoeglijk naamwoord krijgt hier de ett-vorm: kall wordt kallt.",
+    },
+    {
+      title: "De tegenwoordige tijd",
+      sentenceIndex: 2,
+      excerpt: "går",
+      explanation:
+        "Går is de tegenwoordige tijd van gå (gaan of lopen). De werkwoordsvorm verandert niet met het onderwerp: jag går, hon går en vi går gebruiken allemaal går.",
+    },
+    {
+      title: "Lidwoord en bijvoeglijk naamwoord",
+      sentenceIndex: 3,
+      excerpt: "en blå jacka",
+      explanation:
+        "Jacka is een en-woord. In deze onbepaalde woordgroep staat het lidwoord en vóór het bijvoeglijk naamwoord en het zelfstandig naamwoord. Blå krijgt hier geen extra uitgang.",
+    },
+    {
+      title: "De bepaalde vorm",
+      sentenceIndex: 4,
+      excerpt: "Bussen",
+      explanation:
+        "Bij en buss maak je de bepaalde vorm door -en achter buss te zetten: bussen betekent de bus. Het bepaalde lidwoord staat in dit voorbeeld dus als uitgang aan het zelfstandig naamwoord vast.",
+    },
+  ],
   languageNotes: [
     {
       title: "Een tijdsaanduiding vooraan",

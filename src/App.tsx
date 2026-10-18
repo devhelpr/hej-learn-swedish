@@ -32,7 +32,9 @@ export default function App() {
   const [voices, setVoices] = useState<Voice[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [lesson, setLesson] = useState<Lesson>(demo);
-  const [view, setView] = useState<"text" | "sentences" | "language">("text");
+  const [view, setView] = useState<
+    "text" | "sentences" | "language" | "grammar"
+  >("text");
   const [filters, setFilters] = useState<{
     active: LessonFilter;
     archive: LessonFilter;
@@ -54,6 +56,7 @@ export default function App() {
   const [text, setText] = useState("");
   const [generating, setGenerating] = useState(false);
   const [notesTarget, setNotesTarget] = useState<{
+    grammar: boolean;
     id: string;
     title: string;
     level: Level;
@@ -489,36 +492,45 @@ export default function App() {
     setFailedNews(null);
     setError("");
   };
-  const addLanguageNotes = async () => {
+  const addLanguageNotes = async (grammar = false) => {
+    const field = grammar ? "grammarNotes" : "languageNotes";
     if (generationLock.current) return;
     const target = lessonRef.current;
-    if (target.id === "demo" || target.languageNotes?.length) return;
+    if (target.id === "demo" || target[field]?.length) return;
     generationLock.current = true;
     generationCancelled.current = false;
     setGenerating(true);
-    setNotesTarget({ id: target.id, title: target.title, level: target.level });
+    setNotesTarget({
+      id: target.id,
+      title: target.title,
+      level: target.level,
+      grammar,
+    });
     setError("");
     setNotice("");
     try {
       await invoke("save_settings", { settings: settingsRef.current });
       if (generationCancelled.current)
         throw new Error("Generatie geannuleerd.");
-      const result = await invoke<Lesson>("generate_language_notes", {
-        id: target.id,
-      });
+      const result = await invoke<Lesson>(
+        grammar ? "generate_grammar_notes" : "generate_language_notes",
+        {
+          id: target.id,
+        },
+      );
       if (!generationMounted.current) return;
       // Only merge notes: playback and archive changes may have happened meanwhile.
       setLessons((ls) =>
         ls.map((l) =>
-          l.id === target.id
-            ? { ...l, languageNotes: result.languageNotes }
-            : l,
+          l.id === target.id ? { ...l, [field]: result[field] } : l,
         ),
       );
       setLesson((l) =>
-        l.id === target.id ? { ...l, languageNotes: result.languageNotes } : l,
+        l.id === target.id ? { ...l, [field]: result[field] } : l,
       );
-      setNotice(`Vijf taalbijzonderheden opgeslagen voor “${target.title}”.`);
+      setNotice(
+        `Vijf ${grammar ? "grammatica-elementen" : "taalbijzonderheden"} opgeslagen voor “${target.title}”.`,
+      );
     } catch (e) {
       fail(e);
     } finally {
@@ -611,7 +623,7 @@ export default function App() {
       {articleLoading
         ? "Artikeltekst ophalen…"
         : notesTarget
-          ? `Codex maakt taalbijzonderheden (${notesTarget.level}) voor “${notesTarget.title}”…`
+          ? `Codex maakt ${notesTarget.grammar ? "grammatica-uitleg" : "taalbijzonderheden"} (${notesTarget.level}) voor “${notesTarget.title}”…`
           : `Codex maakt je ${settings.level}-oefening…`}
       <button onClick={cancelGeneration}>Annuleren</button>
     </div>
@@ -1058,14 +1070,28 @@ export default function App() {
                     >
                       Bijzonderheden taal
                     </button>
+                    <button
+                      className={view === "grammar" ? "selected" : ""}
+                      aria-pressed={view === "grammar"}
+                      onClick={() => setView("grammar")}
+                    >
+                      Grammatica
+                    </button>
                   </div>
-                  {view === "language" ? (
+                  {view === "language" || view === "grammar" ? (
                     <LanguageNotes
                       lesson={lesson}
+                      grammar={view === "grammar"}
                       generating={generating}
-                      loading={generating && notesTarget?.id === lesson.id}
+                      loading={
+                        generating &&
+                        notesTarget?.id === lesson.id &&
+                        notesTarget.grammar === (view === "grammar")
+                      }
                       canGenerate={desktop && settingsReady}
-                      onGenerate={() => void addLanguageNotes()}
+                      onGenerate={() =>
+                        void addLanguageNotes(view === "grammar")
+                      }
                     />
                   ) : view === "text" ? (
                     <article

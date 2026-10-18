@@ -35,6 +35,10 @@ async fn generate_language_notes(app: tauri::AppHandle, id: String) -> Result<Le
     generation::generate_notes(app, id).await
 }
 #[tauri::command]
+async fn generate_grammar_notes(app: tauri::AppHandle, id: String) -> Result<Lesson, String> {
+    generation::generate_grammar(app, id).await
+}
+#[tauri::command]
 fn cancel_generation(s: State<Generation>) {
     s.cancel()
 }
@@ -131,6 +135,7 @@ fn main() {
             fetch_article,
             generate_lesson,
             generate_language_notes,
+            generate_grammar_notes,
             cancel_generation,
             list_lessons,
             save_progress,
