@@ -39,11 +39,15 @@ async fn generate_grammar_notes(app: tauri::AppHandle, id: String) -> Result<Les
     generation::generate_grammar(app, id).await
 }
 #[tauri::command]
+async fn generate_title_translation(app: tauri::AppHandle, id: String) -> Result<Lesson, String> {
+    generation::generate_title(app, id).await
+}
+#[tauri::command]
 async fn ask_exercise_question(
     app: tauri::AppHandle,
     id: String,
     question: String,
-    sentence_index: usize,
+    sentence_index: Option<usize>,
 ) -> Result<generation::ExerciseAnswer, String> {
     generation::ask_question(app, id, question, sentence_index).await
 }
@@ -145,6 +149,7 @@ fn main() {
             generate_lesson,
             generate_language_notes,
             generate_grammar_notes,
+            generate_title_translation,
             ask_exercise_question,
             cancel_generation,
             list_lessons,

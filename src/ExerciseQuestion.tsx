@@ -3,10 +3,13 @@ import type { Lesson } from "./types";
 
 interface Props {
   lesson: Lesson;
-  sentenceIndex: number;
-  onAsk: (question: string) => Promise<{ answer: string }>;
+  sentenceIndex: number | null;
+  onAsk: (
+    question: string,
+    sentenceIndex: number | null,
+  ) => Promise<{ answer: string }>;
   onCancel: () => Promise<void>;
-  onClose: () => void;
+  disabledReason?: string;
 }
 
 export default function ExerciseQuestion({
@@ -14,77 +17,68 @@ export default function ExerciseQuestion({
   sentenceIndex,
   onAsk,
   onCancel,
-  onClose,
+  disabledReason,
 }: Props) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const questionInput = useRef<HTMLTextAreaElement>(null);
+  const disabled = Boolean(disabledReason);
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
+  const [submittedIndex, setSubmittedIndex] = useState<number | null>(
+    sentenceIndex,
+  );
+
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const contextIndex = busy || answer || error ? submittedIndex : sentenceIndex;
   const [cancelling, setCancelling] = useState(false);
   const lock = useRef(false);
   const cancelled = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
-    const element = dialog.current!;
-    element.showModal();
-    questionInput.current?.focus();
     return () => {
       mounted.current = false;
-      element.close();
+      if (lock.current) {
+        cancelled.current = true;
+        void cancelRef.current().catch(() => {});
+      }
     };
   }, []);
-  const close = () => {
-    if (!lock.current) onClose();
-  };
   return (
-    <dialog
-      ref={dialog}
-      className="custom-dialog composer question-dialog"
-      aria-labelledby="question-heading"
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
-    >
-      <div className="section-toolbar">
-        <h2 id="question-heading">Vraag over deze oefening</h2>
-        <button
-          className="quiet"
-          aria-label="Vraagdialoog sluiten"
-          disabled={busy}
-          onClick={close}
-        >
-          ×
-        </button>
-      </div>
+    <section className="exercise-question" aria-labelledby="question-heading">
+      <h2 id="question-heading">Vraag over deze oefening</h2>
       <p>
         {lesson.title} · {lesson.level}
       </p>
+      {disabledReason && <p className="fineprint">{disabledReason}</p>}
       <p id="question-help">
         Stel een vraag over de tekst, vertaling, grammatica of uitspraak. Vragen
         buiten de oefening kun je aan ChatGPT stellen.
       </p>
       <div className="question-context">
         <span>
-          Zin {sentenceIndex + 1} als context · de hele oefening wordt
-          meegenomen
+          {contextIndex === null ? "Titel" : `Zin ${contextIndex + 1}`} als
+          context · de hele oefening wordt meegenomen
         </span>
-        <p lang="sv">{lesson.sentences[sentenceIndex]?.sv}</p>
+        <p lang="sv">
+          {contextIndex === null
+            ? lesson.title
+            : lesson.sentences[contextIndex]?.sv}
+        </p>
       </div>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
-          if (lock.current || !question.trim()) return;
+          if (disabled || lock.current || !question.trim()) return;
           lock.current = true;
           cancelled.current = false;
+          setSubmittedIndex(sentenceIndex);
           setBusy(true);
           setError("");
           setAnswer("");
           try {
-            const result = await onAsk(question.trim());
+            const result = await onAsk(question.trim(), sentenceIndex);
             if (cancelled.current) throw new Error("Vraag geannuleerd.");
             if (mounted.current) setAnswer(result.answer);
           } catch (e) {
@@ -102,7 +96,6 @@ export default function ExerciseQuestion({
         <label htmlFor="exercise-question">Je vraag</label>
         <textarea
           id="exercise-question"
-          ref={questionInput}
           aria-describedby="question-help"
           maxLength={2000}
           placeholder="Bijvoorbeeld: waarom staat het werkwoord hier vóór het onderwerp?"
@@ -118,7 +111,7 @@ export default function ExerciseQuestion({
           <span className="fineprint">{question.length} / 2000 tekens</span>
           <button
             className="primary"
-            disabled={busy || !question.trim()}
+            disabled={disabled || busy || !question.trim()}
             type="submit"
           >
             Vraag stellen
@@ -159,6 +152,6 @@ export default function ExerciseQuestion({
       <p className="fineprint">
         AI kan fouten maken. Vragen en antwoorden worden niet opgeslagen.
       </p>
-    </dialog>
+    </section>
   );
 }

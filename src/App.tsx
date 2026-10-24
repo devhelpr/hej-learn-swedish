@@ -24,6 +24,7 @@ const initialPlayer: PlayerState = {
   requestId: null,
   status: "idle",
   index: 0,
+  position: "sentence",
   continuous: false,
 };
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -45,6 +46,7 @@ export default function App() {
   const [archiveBusy, setArchiveBusy] = useState(false);
   const archiveLock = useRef(false);
   const sentenceElement = useRef<HTMLElement | null>(null);
+  const titleElement = useRef<HTMLHeadingElement | null>(null);
   const [player, setPlayer] = useState<PlayerState>(initialPlayer);
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState("");
@@ -64,10 +66,8 @@ export default function App() {
   } | null>(null);
   const generationLock = useRef(false);
   const generationCancelled = useRef(false);
-  const [questionTarget, setQuestionTarget] = useState<{
-    lesson: Lesson;
-    sentenceIndex: number;
-  } | null>(null);
+  const [questionBusy, setQuestionBusy] = useState<string | null>(null);
+  const [titleBusy, setTitleBusy] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
   const [customSource, setCustomSource] = useState<NewsItem | null>(null);
   const [failedNews, setFailedNews] = useState<NewsItem | null>(null);
@@ -144,13 +144,18 @@ export default function App() {
     [fail],
   );
   const play = useCallback(
-    async (index: number, continuous: boolean) => {
+    async (
+      index: number,
+      continuous: boolean,
+      position: PlayerState["position"] = "sentence",
+    ) => {
       clearTimer();
       pausedGap.current = false;
       if (archiveLock.current) return;
       const current = lessonRef.current;
       const s = settingsRef.current;
-      const i = resumeIndex(index, current.sentences.length);
+      const i =
+        position === "title" ? 0 : resumeIndex(index, current.sentences.length);
       if (!s.voiceId) {
         setErrorDetails("");
         setError(
@@ -159,12 +164,18 @@ export default function App() {
         return;
       }
       const id = crypto.randomUUID();
-      changePlayer({ requestId: id, status: "loading", index: i, continuous });
-      persist(i);
+      changePlayer({
+        requestId: id,
+        status: "loading",
+        index: i,
+        continuous,
+        position,
+      });
+      if (position === "sentence" || continuous) persist(i);
       try {
         await speech("speak", {
           id,
-          text: current.sentences[i].sv,
+          text: position === "title" ? current.title : current.sentences[i].sv,
           voiceId: s.voiceId,
           rate: s.rate,
         });
@@ -277,8 +288,10 @@ export default function App() {
           continuous: false,
         });
       if (e.kind === "finished") {
-        const last = p.index === lessonRef.current.sentences.length - 1;
-        persist(p.index, last);
+        const last =
+          p.position === "sentence" &&
+          p.index === lessonRef.current.sentences.length - 1;
+        if (p.position === "sentence") persist(p.index, last);
         if (
           !last &&
           p.continuous &&
@@ -295,7 +308,7 @@ export default function App() {
               playerRef.current.requestId === e.id &&
               playerRef.current.status === "gap"
             )
-              void play(p.index + 1, true);
+              void play(p.position === "title" ? 0 : p.index + 1, true);
           }, settingsRef.current.gapMs);
         } else
           changePlayer({
@@ -334,12 +347,15 @@ export default function App() {
   }, [clearTimer]);
   useEffect(() => {
     if (["playing", "gap"].includes(player.status)) {
-      sentenceElement.current?.scrollIntoView?.({
+      (player.position === "title"
+        ? titleElement.current
+        : sentenceElement.current
+      )?.scrollIntoView?.({
         block: "nearest",
         behavior: "smooth",
       });
     }
-  }, [player.index, player.status, view]);
+  }, [player.index, player.position, player.status, view]);
   const navigate = async (next: Tab) => {
     try {
       await stop();
@@ -466,7 +482,7 @@ export default function App() {
       setLessons((ls) => [result, ...ls.filter((l) => l.id !== result.id)]);
       lessonRef.current = result;
       setLesson(result);
-      changePlayer({ ...initialPlayer });
+      changePlayer({ ...initialPlayer, position: "title" });
       setTab("Oefenen");
       if (!item) {
         setCustomOpen(false);
@@ -497,23 +513,68 @@ export default function App() {
     setFailedNews(null);
     setError("");
   };
-  const askExerciseQuestion = async (question: string) => {
-    if (generationLock.current || !questionTarget)
+  const cancelQuestion = useCallback(async () => {
+    generationCancelled.current = true;
+    await invoke("cancel_generation");
+  }, []);
+  const askExerciseQuestion = async (
+    question: string,
+    sentenceIndex: number | null,
+  ) => {
+    if (generationLock.current)
       throw new Error("Wacht tot de lopende aanvraag klaar is.");
+    const id = lesson.id;
     generationLock.current = true;
     generationCancelled.current = false;
     setGenerating(true);
+    setQuestionBusy(id);
     try {
       await invoke("save_settings", { settings: settingsRef.current });
       if (generationCancelled.current) throw new Error("Vraag geannuleerd.");
       return await invoke<{ answer: string }>("ask_exercise_question", {
-        id: questionTarget.lesson.id,
+        id,
         question,
-        sentenceIndex: questionTarget.sentenceIndex,
+        sentenceIndex,
       });
     } finally {
       generationLock.current = false;
-      if (generationMounted.current) setGenerating(false);
+      if (generationMounted.current) {
+        setGenerating(false);
+        setQuestionBusy(null);
+      }
+    }
+  };
+  const addTitleTranslation = async () => {
+    if (generationLock.current) return;
+    const target = lessonRef.current;
+    generationLock.current = true;
+    generationCancelled.current = false;
+    setGenerating(true);
+    setTitleBusy(true);
+    setError("");
+    try {
+      await invoke("save_settings", { settings: settingsRef.current });
+      if (generationCancelled.current)
+        throw new Error("Generatie geannuleerd.");
+      const updated = await invoke<Lesson>("generate_title_translation", {
+        id: target.id,
+      });
+      setLessons((ls) =>
+        ls.map((l) =>
+          l.id === target.id ? { ...l, titleNl: updated.titleNl } : l,
+        ),
+      );
+      setLesson((l) =>
+        l.id === target.id ? { ...l, titleNl: updated.titleNl } : l,
+      );
+    } catch (e) {
+      fail(e);
+    } finally {
+      generationLock.current = false;
+      if (generationMounted.current) {
+        setGenerating(false);
+        setTitleBusy(false);
+      }
     }
   };
   const addLanguageNotes = async (grammar = false) => {
@@ -626,12 +687,12 @@ export default function App() {
       } else if (p.status === "paused") {
         if (pausedGap.current) {
           pausedGap.current = false;
-          await play(p.index + 1, p.continuous);
+          await play(p.position === "title" ? 0 : p.index + 1, p.continuous);
         } else if (p.requestId) {
           await speech("resume");
           changePlayer({ ...p, status: "playing" });
         }
-      } else if (p.status !== "loading") await play(p.index, true);
+      } else if (p.status !== "loading") await play(p.index, true, p.position);
     } catch (e) {
       fail(e);
     }
@@ -644,11 +705,13 @@ export default function App() {
   const generationStatus = (
     <div className="generation" role="status">
       <span className="spinner" />
-      {articleLoading
-        ? "Artikeltekst ophalen…"
-        : notesTarget
-          ? `Codex maakt ${notesTarget.grammar ? "grammatica-uitleg" : "taalbijzonderheden"} (${notesTarget.level}) voor “${notesTarget.title}”…`
-          : `Codex maakt je ${settings.level}-oefening…`}
+      {titleBusy
+        ? "Codex vertaalt de titel…"
+        : articleLoading
+          ? "Artikeltekst ophalen…"
+          : notesTarget
+            ? `Codex maakt ${notesTarget.grammar ? "grammatica-uitleg" : "taalbijzonderheden"} (${notesTarget.level}) voor “${notesTarget.title}”…`
+            : `Codex maakt je ${settings.level}-oefening…`}
       <button onClick={cancelGeneration}>Annuleren</button>
     </div>
   );
@@ -755,19 +818,7 @@ export default function App() {
             )}
           </div>
         )}
-        {generating && !customOpen && !questionTarget && generationStatus}
-        {questionTarget && (
-          <ExerciseQuestion
-            lesson={questionTarget.lesson}
-            sentenceIndex={questionTarget.sentenceIndex}
-            onAsk={askExerciseQuestion}
-            onCancel={async () => {
-              generationCancelled.current = true;
-              await invoke("cancel_generation");
-            }}
-            onClose={() => setQuestionTarget(null)}
-          />
-        )}
+        {generating && !customOpen && !questionBusy && generationStatus}
         <dialog
           ref={dialog}
           className="custom-dialog composer"
@@ -951,7 +1002,40 @@ export default function App() {
                   <div className="page-title">
                     <div>
                       <p className="eyebrow">LUISTER. LEES. HERHAAL.</p>
-                      <h1>{lesson.title}</h1>
+                      <h1
+                        ref={titleElement}
+                        lang="sv"
+                        className={
+                          player.position === "title"
+                            ? "active-title"
+                            : undefined
+                        }
+                      >
+                        {lesson.title}
+                      </h1>
+                      {settings.showTranslation && lesson.titleNl && (
+                        <p lang="nl" className="title-translation">
+                          {lesson.titleNl}
+                        </p>
+                      )}
+                      <div className="title-controls">
+                        <button
+                          className="quiet"
+                          aria-label="Titel afspelen"
+                          onClick={() => void play(0, false, "title")}
+                        >
+                          ▷ Titel beluisteren
+                        </button>
+                        {!lesson.titleNl && lesson.id !== "demo" && (
+                          <button
+                            className="quiet"
+                            disabled={!desktop || !settingsReady || generating}
+                            onClick={() => void addTitleTranslation()}
+                          >
+                            Titelvertaling toevoegen
+                          </button>
+                        )}
+                      </div>
                       <p>
                         {lesson.source} · {lesson.level} ·{" "}
                         {lesson.sentences.length} zinnen{" "}
@@ -987,43 +1071,33 @@ export default function App() {
                           </label>
                         ))}
                       <span className="pill">
-                        {player.index + 1} / {lesson.sentences.length}
+                        {player.position === "title"
+                          ? "Titel"
+                          : `${player.index + 1} / ${lesson.sentences.length}`}
                       </span>
-                      <button
-                        className="quiet exercise-question-action"
-                        disabled={
-                          !desktop ||
-                          !settingsReady ||
-                          generating ||
-                          lesson.id === "demo"
-                        }
-                        title={
-                          lesson.id === "demo"
-                            ? "Beschikbaar bij opgeslagen oefeningen"
-                            : !desktop
-                              ? "Open de desktopapp om vragen te stellen"
-                              : undefined
-                        }
-                        onClick={() =>
-                          setQuestionTarget({
-                            lesson,
-                            sentenceIndex: player.index,
-                          })
-                        }
-                      >
-                        Vraag over oefening
-                      </button>
                     </div>
                   </div>
                   <section className="player-panel">
                     <div className="player-controls">
                       <button
                         className="round"
+                        aria-label="Naar het begin"
+                        title="Naar het begin"
+                        onClick={() => void play(0, true, "title")}
+                      >
+                        <span aria-hidden="true">⏮</span>
+                      </button>
+                      <button
+                        className="round"
                         aria-label="Vorige zin"
                         onClick={() =>
-                          void play(player.index - 1, player.continuous)
+                          void play(
+                            Math.max(0, player.index - 1),
+                            player.continuous,
+                            player.index === 0 ? "title" : "sentence",
+                          )
                         }
-                        disabled={player.index === 0}
+                        disabled={player.position === "title"}
                       >
                         ←
                       </button>
@@ -1044,9 +1118,15 @@ export default function App() {
                         className="round"
                         aria-label="Volgende zin"
                         onClick={() =>
-                          void play(player.index + 1, player.continuous)
+                          void play(
+                            player.position === "title" ? 0 : player.index + 1,
+                            player.continuous,
+                          )
                         }
-                        disabled={player.index === lesson.sentences.length - 1}
+                        disabled={
+                          player.position === "sentence" &&
+                          player.index === lesson.sentences.length - 1
+                        }
                       >
                         →
                       </button>
@@ -1058,7 +1138,9 @@ export default function App() {
                       </button>
                       <button
                         className="quiet"
-                        onClick={() => void play(player.index, false)}
+                        onClick={() =>
+                          void play(player.index, false, player.position)
+                        }
                       >
                         ↻ Herhalen
                       </button>
@@ -1163,6 +1245,7 @@ export default function App() {
                           <span
                             key={i}
                             ref={
+                              player.position === "sentence" &&
                               i === player.index
                                 ? (element) => {
                                     sentenceElement.current = element;
@@ -1170,7 +1253,10 @@ export default function App() {
                                 : undefined
                             }
                             className={
-                              i === player.index ? "active-sentence" : ""
+                              player.position === "sentence" &&
+                              i === player.index
+                                ? "active-sentence"
+                                : ""
                             }
                           >
                             {pair.sv}{" "}
@@ -1182,8 +1268,16 @@ export default function App() {
                           className="reading-subtitle"
                           aria-label="Vertaling actieve zin"
                         >
-                          <span>Zin {player.index + 1}</span>
-                          <p lang="nl">{lesson.sentences[player.index]?.nl}</p>
+                          <span>
+                            {player.position === "title"
+                              ? "Titel"
+                              : `Zin ${player.index + 1}`}
+                          </span>
+                          <p lang="nl">
+                            {player.position === "title"
+                              ? lesson.titleNl
+                              : lesson.sentences[player.index]?.nl}
+                          </p>
                         </div>
                       )}
                     </article>
@@ -1193,13 +1287,13 @@ export default function App() {
                         <article
                           key={i}
                           ref={
-                            i === player.index
+                            player.position === "sentence" && i === player.index
                               ? (element) => {
                                   sentenceElement.current = element;
                                 }
                               : undefined
                           }
-                          className={`sentence ${i === player.index ? "current" : ""}`}
+                          className={`sentence ${player.position === "sentence" && i === player.index ? "current" : ""}`}
                         >
                           <span className="sentence-number">
                             {String(i + 1).padStart(2, "0")}
@@ -1219,7 +1313,9 @@ export default function App() {
                             aria-label={`Zin ${i + 1} afspelen`}
                             onClick={() => void play(i, false)}
                           >
-                            {i === player.index && player.status === "playing"
+                            {player.position === "sentence" &&
+                            i === player.index &&
+                            player.status === "playing"
                               ? "♫"
                               : "▷"}
                           </button>
@@ -1233,6 +1329,26 @@ export default function App() {
                       ? "Deze voorbeeldtekst wordt niet als oefening opgeslagen."
                       : "Je voortgang wordt automatisch lokaal bewaard."}
                   </p>
+                  <ExerciseQuestion
+                    key={lesson.id}
+                    lesson={lesson}
+                    sentenceIndex={
+                      player.position === "title" ? null : player.index
+                    }
+                    onAsk={askExerciseQuestion}
+                    onCancel={cancelQuestion}
+                    disabledReason={
+                      lesson.id === "demo"
+                        ? "Vragen stellen is beschikbaar bij opgeslagen oefeningen."
+                        : !desktop
+                          ? "Open de desktopapp om vragen te stellen."
+                          : !settingsReady
+                            ? "Instellingen worden geladen…"
+                            : generating && questionBusy !== lesson.id
+                              ? "Wacht totdat de lopende aanvraag klaar is."
+                              : undefined
+                    }
+                  />
                 </>
               ) : (
                 <div className="empty">

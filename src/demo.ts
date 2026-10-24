@@ -2,6 +2,7 @@ import type { Lesson } from "./types";
 export const demo: Lesson = {
   id: "demo",
   title: "En regnig dag i Sverige",
+  titleNl: "Een regenachtige dag in Zweden",
   source: "Voorbeeldtekst — geen actueel nieuws",
   sourceUrl: null,
   level: "A1",

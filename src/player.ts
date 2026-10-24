@@ -4,6 +4,7 @@ export interface PlayerState {
   requestId: string | null;
   status: PlayerStatus;
   index: number;
+  position: "title" | "sentence";
   continuous: boolean;
 }
 export function acceptsEvent(state: PlayerState, event: SpeechEvent): boolean {

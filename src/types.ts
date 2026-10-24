@@ -14,6 +14,7 @@ export interface Progress {
   completed: boolean;
 }
 export interface Lesson {
+  titleNl?: string | null;
   id: string;
   title: string;
   source: string;

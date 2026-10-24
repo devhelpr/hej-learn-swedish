@@ -24,6 +24,8 @@ pub struct NewsItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Lesson {
+    #[serde(default)]
+    pub title_nl: Option<String>,
     pub id: String,
     pub title: String,
     pub source: String,
@@ -137,6 +139,7 @@ impl Default for Settings {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Generated {
+    pub title_nl: String,
     pub grammar_notes: Vec<LanguageNote>,
     pub title: String,
     pub sentences: Vec<SentencePair>,
@@ -162,6 +165,7 @@ impl Generated {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        validate_title_translation(&self.title_nl)?;
         if self.title.trim().is_empty() || self.title.len() > 300 {
             return Err("De gegenereerde titel is ongeldig.".into());
         }
@@ -180,6 +184,13 @@ impl Generated {
         validate_grammar_notes(&self.grammar_notes, &self.sentences)
     }
 }
+pub fn validate_title_translation(title: &str) -> Result<(), String> {
+    if title.trim().is_empty() || title.chars().count() > 2000 {
+        return Err("Codex leverde een lege of te lange titelvertaling. Probeer opnieuw.".into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 pub fn test_notes(excerpt: &str) -> Vec<LanguageNote> {
     (0..5)
@@ -198,6 +209,7 @@ mod tests {
     #[test]
     fn rejects_incomplete_output() {
         let g = Generated {
+            title_nl: "Nieuws".into(),
             title: "Titel".into(),
             grammar_notes: test_notes("Det regnar."),
             language_notes: vec![],
@@ -211,6 +223,7 @@ mod tests {
     #[test]
     fn rejects_sentences_too_long_for_selected_level() {
         let g = Generated {
+            title_nl: "Nieuws".into(),
             title: "Nyheter".into(),
             grammar_notes: test_notes("Det regnar."),
             language_notes: test_notes("Det regnar."),
@@ -225,6 +238,7 @@ mod tests {
     #[test]
     fn validates_pairs() {
         let mut g = Generated {
+            title_nl: "Nieuws".into(),
             title: "Nyheter".into(),
             grammar_notes: test_notes("Det regnar."),
             language_notes: test_notes("Det regnar."),

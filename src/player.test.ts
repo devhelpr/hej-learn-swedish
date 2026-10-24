@@ -5,6 +5,7 @@ describe("player request identity", () => {
     requestId: "new",
     status: "playing",
     index: 1,
+    position: "sentence",
     continuous: true,
   };
   it("ignores completion of interrupted utterances", () => {

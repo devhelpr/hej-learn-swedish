@@ -1086,6 +1086,21 @@ describe("local speech without optional services", () => {
 });
 
 describe("exercise questions", () => {
+  it("lets you draft a question in the example exercise while sending is unavailable", async () => {
+    await setup();
+    const input = screen.getByLabelText("Je vraag");
+    expect(input).toHaveProperty("disabled", false);
+    fireEvent.change(input, { target: { value: "Wat betekent regnar?" } });
+    expect(input).toHaveProperty("value", "Wat betekent regnar?");
+    expect(
+      screen.getByRole("button", { name: "Vraag stellen" }),
+    ).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Grammatica" }));
+    expect(screen.getByLabelText("Je vraag")).toHaveProperty(
+      "value",
+      "Wat betekent regnar?",
+    );
+  });
   async function openSaved() {
     await setup();
     fireEvent.click(
@@ -1093,7 +1108,7 @@ describe("exercise questions", () => {
     );
     await screen.findByRole("checkbox", { name: "Gedaan" });
   }
-  it("sends the saved exercise and active sentence, shows the answer and restores focus", async () => {
+  it("sends the saved exercise and active sentence and shows the answer inline", async () => {
     const previous = backend.invoke.getMockImplementation()!;
     backend.invoke.mockImplementation(async (cmd, args) => {
       if (cmd === "ask_exercise_question")
@@ -1101,20 +1116,15 @@ describe("exercise questions", () => {
       return previous(cmd, args);
     });
     await openSaved();
-    const opener = screen.getByRole("button", { name: "Vraag over oefening" });
-    opener.focus();
-    fireEvent.click(opener);
-    const modal = screen.getByRole("dialog");
-    expect(within(modal).getByText(/Zin 4 als context/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText(/Zin 4 als context/)).toBeTruthy();
     expect(
-      within(modal).getByRole("button", { name: "Vraag stellen" }),
+      screen.getByRole("button", { name: "Vraag stellen" }),
     ).toHaveProperty("disabled", true);
     fireEvent.change(screen.getByLabelText("Je vraag"), {
       target: { value: "Waarom deze woordvolgorde?" },
     });
-    fireEvent.click(
-      within(modal).getByRole("button", { name: "Vraag stellen" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Vraag stellen" }));
     expect(
       await screen.findByText("Dit is de Zweedse woordvolgorde."),
     ).toBeTruthy();
@@ -1123,9 +1133,7 @@ describe("exercise questions", () => {
       question: "Waarom deze woordvolgorde?",
       sentenceIndex: 3,
     });
-    fireEvent(modal, new Event("cancel", { cancelable: true }));
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(document.activeElement).toBe(opener);
   });
   it("keeps the question editable after a relevance rejection and supports retry", async () => {
     const previous = backend.invoke.getMockImplementation()!;
@@ -1138,9 +1146,6 @@ describe("exercise questions", () => {
       return previous(cmd, args);
     });
     await openSaved();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Vraag over oefening" }),
-    );
     fireEvent.change(screen.getByLabelText("Je vraag"), {
       target: { value: "Wat is het weer morgen?" },
     });
@@ -1163,7 +1168,7 @@ describe("exercise questions", () => {
     expect(await screen.findByText("Blå betekent blauw.")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
-  it("locks closing while answering and preserves the draft after cancellation", async () => {
+  it("preserves the draft after cancellation", async () => {
     let reject!: (e: Error) => void;
     const pending = new Promise((_, r) => {
       reject = r;
@@ -1178,9 +1183,6 @@ describe("exercise questions", () => {
       return previous(cmd, args);
     });
     await openSaved();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Vraag over oefening" }),
-    );
     fireEvent.change(screen.getByLabelText("Je vraag"), {
       target: { value: "Wat betekent dit?" },
     });
@@ -1192,19 +1194,8 @@ describe("exercise questions", () => {
         ),
       ).toBe(true),
     );
-    expect(
-      screen.getByRole("button", { name: "Vraagdialoog sluiten" }),
-    ).toHaveProperty("disabled", true);
-    fireEvent(
-      screen.getByRole("dialog"),
-      new Event("cancel", { cancelable: true }),
-    );
-    expect(screen.getByRole("dialog")).toBeTruthy();
-    fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", {
-        name: "Annuleren",
-      }),
-    );
+    expect(screen.getByLabelText("Je vraag")).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
     await screen.findByRole("alert");
     expect(screen.getByLabelText("Je vraag")).toHaveProperty(
       "value",
@@ -1214,4 +1205,356 @@ describe("exercise questions", () => {
       screen.getByRole("button", { name: "Vraag stellen" }),
     ).toHaveProperty("disabled", false);
   });
+});
+
+describe("title playback and translations", () => {
+  it.each(["loading", "playing", "paused", "gap"])(
+    "restarts at the title from %s and ignores stale speech",
+    async (status) => {
+      await setup();
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
+      );
+      await screen.findByRole("checkbox", { name: "Gedaan" });
+      fireEvent.click(screen.getByRole("button", { name: "▶ Afspelen" }));
+      await waitFor(() => expect(calls()).toHaveLength(1));
+      const old = calls()[0];
+      if (status !== "loading") await emit("started", old.id);
+      if (status === "paused")
+        fireEvent.click(screen.getByRole("button", { name: "Ⅱ Pauzeren" }));
+      if (status === "gap") await emit("finished", old.id);
+      fireEvent.click(screen.getByRole("button", { name: "Naar het begin" }));
+      await waitFor(() => expect(calls()).toHaveLength(2));
+      const title = calls()[1];
+      expect(title.text).toBe(demo.title);
+      expect(screen.getByRole("button", { name: "Vorige zin" })).toHaveProperty(
+        "disabled",
+        true,
+      );
+      expect(screen.getByText("Titel", { selector: ".pill" })).toBeTruthy();
+      await emit("finished", old.id);
+      expect(calls()).toHaveLength(2);
+      await emit("started", title.id);
+      await emit("finished", title.id);
+      await waitFor(() => expect(calls()).toHaveLength(3));
+      expect(calls()[2].text).toBe(demo.sentences[0].sv);
+      expect(backend.invoke).toHaveBeenCalledWith("save_progress", {
+        id: "saved",
+        progress: { lastSentence: 0, completed: false },
+      });
+    },
+  );
+  it("supports title pause, resume, repeat and previous/next without counting the title as a sentence", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Titel afspelen" }));
+    await waitFor(() => expect(calls()).toHaveLength(1));
+    await emit("started", calls()[0].id);
+    fireEvent.click(screen.getByRole("button", { name: "Ⅱ Pauzeren" }));
+    fireEvent.click(screen.getByRole("button", { name: "▶ Hervatten" }));
+    await waitFor(() =>
+      expect(backend.invoke).toHaveBeenCalledWith(
+        "speech_control",
+        expect.objectContaining({ action: "resume", id: calls()[0].id }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "↻ Herhalen" }));
+    await waitFor(() => expect(calls()).toHaveLength(2));
+    expect(calls()[1].text).toBe(demo.title);
+    await emit("started", calls()[1].id);
+    await emit("finished", calls()[1].id);
+    await screen.findByRole("button", { name: "▶ Afspelen" });
+    expect(calls()).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Volgende zin" }));
+    await waitFor(() => expect(calls()).toHaveLength(3));
+    expect(calls()[2].text).toBe(demo.sentences[0].sv);
+    expect(screen.getByText(`1 / ${demo.sentences.length}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Vorige zin" }));
+    await waitFor(() => expect(calls()).toHaveLength(4));
+    expect(calls()[3].text).toBe(demo.title);
+  });
+  it("pauses between title and sentence one and honors disabled auto advance", async () => {
+    await setup();
+    fireEvent.click(screen.getByRole("button", { name: "Naar het begin" }));
+    await waitFor(() => expect(calls()).toHaveLength(1));
+    await emit("started", calls()[0].id);
+    await emit("finished", calls()[0].id);
+    fireEvent.click(screen.getByRole("button", { name: "Ⅱ Pauzeren" }));
+    fireEvent.click(screen.getByRole("button", { name: "▶ Hervatten" }));
+    await waitFor(() => expect(calls()).toHaveLength(2));
+    expect(calls()[1].text).toBe(demo.sentences[0].sv);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Automatisch doorgaan" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Naar het begin" }));
+    await waitFor(() => expect(calls()).toHaveLength(3));
+    await emit("started", calls()[2].id);
+    await emit("finished", calls()[2].id);
+    await screen.findByRole("button", { name: "▶ Afspelen" });
+    expect(calls()).toHaveLength(3);
+  });
+  it("adds a missing title translation, retries failure and preserves the active sentence", async () => {
+    const previous = backend.invoke.getMockImplementation()!;
+    let attempts = 0;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "list_lessons")
+        return [
+          {
+            ...demo,
+            id: "saved",
+            titleNl: null,
+            progress: { lastSentence: 3, completed: false },
+          },
+        ];
+      if (cmd === "generate_title_translation") {
+        if (++attempts === 1) throw new Error("Vertalen mislukt.");
+        return {
+          ...demo,
+          id: "saved",
+          titleNl: "Een regenachtige dag in Zweden",
+        };
+      }
+      return previous(cmd, args);
+    });
+    await setup();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Titelvertaling toevoegen" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Vertalen mislukt.",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Titelvertaling toevoegen" }),
+    );
+    expect(await screen.findByText(demo.titleNl!)).toBeTruthy();
+    expect(screen.getByText(`4 / ${demo.sentences.length}`)).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Titelvertaling toevoegen" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Nederlandse vertaling" }),
+    );
+    expect(screen.queryByText(demo.titleNl!)).toBeNull();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Nederlandse vertaling" }),
+    );
+    expect(screen.getByText(demo.titleNl!)).toBeTruthy();
+    expect(backend.invoke).toHaveBeenCalledWith("generate_title_translation", {
+      id: "saved",
+    });
+    expect(
+      backend.invoke.mock.calls.some(([cmd]) => cmd === "generate_lesson"),
+    ).toBe(false);
+  });
+});
+
+describe("inline question context and lifecycle", () => {
+  it("freezes the title context at submission across sentence and view changes", async () => {
+    let resolve!: (value: { answer: string }) => void;
+    const pending = new Promise<{ answer: string }>((r) => {
+      resolve = r;
+    });
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "ask_exercise_question") return pending;
+      return previous(cmd, args);
+    });
+    await setup();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
+    );
+    await screen.findByRole("checkbox", { name: "Gedaan" });
+    fireEvent.click(screen.getByRole("button", { name: "Titel afspelen" }));
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Wat betekent de titel?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vraag stellen" }));
+    await waitFor(() =>
+      expect(backend.invoke).toHaveBeenCalledWith("ask_exercise_question", {
+        id: "saved",
+        question: "Wat betekent de titel?",
+        sentenceIndex: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Volgende zin" }));
+    for (const view of [
+      "Losse zinnen",
+      "Grammatica",
+      "Bijzonderheden taal",
+      "Tekst",
+    ]) {
+      fireEvent.click(screen.getByRole("button", { name: view }));
+      expect(screen.getByText(/Titel als context/)).toBeTruthy();
+    }
+    await act(async () => resolve({ answer: "Dit is een regenachtige dag." }));
+    expect(
+      await screen.findByText("Dit is een regenachtige dag."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+  it("cancels on exercise change and discards a late answer", async () => {
+    let resolve!: (value: { answer: string }) => void;
+    const pending = new Promise<{ answer: string }>((r) => {
+      resolve = r;
+    });
+    const previous = backend.invoke.getMockImplementation()!;
+    backend.invoke.mockImplementation(async (cmd, args) => {
+      if (cmd === "list_lessons")
+        return [
+          {
+            ...demo,
+            id: "saved",
+            progress: { lastSentence: 3, completed: false },
+          },
+          {
+            ...demo,
+            id: "second",
+            title: "En annan övning",
+            progress: { lastSentence: 1, completed: false },
+          },
+        ];
+      if (cmd === "ask_exercise_question") return pending;
+      return previous(cmd, args);
+    });
+    await setup();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Hervat bij zin 4/ }),
+    );
+    await screen.findByRole("checkbox", { name: "Gedaan" });
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Waarom regnar?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Vraag stellen" }));
+    await waitFor(() =>
+      expect(backend.invoke).toHaveBeenCalledWith(
+        "ask_exercise_question",
+        expect.objectContaining({ id: "saved" }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Hervat bij zin 2/ }));
+    await screen.findByRole("heading", { name: "En annan övning" });
+    await waitFor(() =>
+      expect(backend.invoke).toHaveBeenCalledWith("cancel_generation"),
+    );
+    expect(screen.getByLabelText("Je vraag")).toHaveProperty("value", "");
+    await act(async () => resolve({ answer: "Een laat antwoord" }));
+    expect(screen.queryByText("Een laat antwoord")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Vraag stellen" }),
+    ).toHaveProperty("disabled", true);
+    fireEvent.change(screen.getByLabelText("Je vraag"), {
+      target: { value: "Wat betekent annan?" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Vraag stellen" }),
+    ).toHaveProperty("disabled", false);
+  });
+});
+
+describe("title translation cancellation and archive", () => {
+  it.each([false, true])(
+    "keeps title translation and inline questions available when archived=%s",
+    async (archived) => {
+      const previous = backend.invoke.getMockImplementation()!;
+      backend.invoke.mockImplementation(async (cmd, args) => {
+        if (cmd === "list_lessons")
+          return [
+            {
+              ...demo,
+              id: "saved",
+              titleNl: null,
+              archivedAt: archived ? "2026-10-11T12:00:00Z" : null,
+            },
+          ];
+        if (cmd === "generate_title_translation")
+          return { ...demo, id: "saved" };
+        return previous(cmd, args);
+      });
+      await setup();
+      if (archived)
+        fireEvent.click(screen.getByRole("button", { name: "Archief" }));
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Hervat bij zin 1/ }),
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Titelvertaling toevoegen" }),
+      );
+      expect(await screen.findByText(demo.titleNl!)).toBeTruthy();
+      for (const view of [
+        "Tekst",
+        "Losse zinnen",
+        "Grammatica",
+        "Bijzonderheden taal",
+      ]) {
+        fireEvent.click(screen.getByRole("button", { name: view }));
+        expect(screen.getByLabelText("Je vraag")).toHaveProperty(
+          "disabled",
+          false,
+        );
+      }
+      if (archived)
+        expect(
+          screen.getByRole("button", { name: "Terug naar actieve oefeningen" }),
+        ).toBeTruthy();
+    },
+  );
+  it.each(["before", "during"])(
+    "cancels title translation %s the CLI request and permits retry",
+    async (phase) => {
+      const previous = backend.invoke.getMockImplementation()!;
+      backend.invoke.mockImplementation(async (cmd, args) => {
+        if (cmd === "list_lessons")
+          return [{ ...demo, id: "saved", titleNl: null }];
+        return previous(cmd, args);
+      });
+      await setup();
+      fireEvent.click(
+        await screen.findByRole("button", { name: /Hervat bij zin 1/ }),
+      );
+      await screen.findByRole("button", { name: "Titelvertaling toevoegen" });
+      let resolve!: () => void;
+      let reject!: (e: Error) => void;
+      const pending = new Promise<void>((r, j) => {
+        resolve = r;
+        reject = j;
+      });
+      backend.invoke.mockImplementation(async (cmd, args) => {
+        if (
+          cmd ===
+          (phase === "before" ? "save_settings" : "generate_title_translation")
+        )
+          return pending;
+        if (cmd === "cancel_generation" && phase === "during") {
+          reject(new Error("Generatie geannuleerd."));
+          return;
+        }
+        return previous(cmd, args);
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Titelvertaling toevoegen" }),
+      );
+      if (phase === "during")
+        await waitFor(() =>
+          expect(backend.invoke).toHaveBeenCalledWith(
+            "generate_title_translation",
+            { id: "saved" },
+          ),
+        );
+      fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
+      if (phase === "before") await act(async () => resolve());
+      await screen.findByRole("alert");
+      expect(
+        screen.getByRole("button", { name: "Titelvertaling toevoegen" }),
+      ).toHaveProperty("disabled", false);
+      expect(screen.queryByText(demo.titleNl!)).toBeNull();
+      if (phase === "before")
+        expect(
+          backend.invoke.mock.calls.some(
+            ([cmd]) => cmd === "generate_title_translation",
+          ),
+        ).toBe(false);
+    },
+  );
 });

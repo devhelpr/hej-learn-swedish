@@ -38,6 +38,27 @@ impl Store {
             .ok_or("Oefening niet gevonden.")?;
         serde_json::from_str(&data).map_err(|e| e.to_string())
     }
+    pub fn save_title_translation(&self, id: &str, title_nl: String) -> Result<Lesson, String> {
+        validate_title_translation(&title_nl)?;
+        let c = self.0.lock().map_err(|e| e.to_string())?;
+        let data: String = c
+            .query_row("SELECT data FROM lessons WHERE id=?1", [id], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let mut lesson: Lesson = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+        if lesson.title_nl.is_none() {
+            lesson.title_nl = Some(title_nl);
+            c.execute(
+                "UPDATE lessons SET data=?1 WHERE id=?2",
+                params![
+                    serde_json::to_string(&lesson).map_err(|e| e.to_string())?,
+                    id
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        Ok(lesson)
+    }
+
     pub fn save_language_notes(
         &self,
         id: &str,
@@ -166,6 +187,7 @@ mod tests {
     fn persists_resume_and_settings() {
         let s = Store::init(Connection::open_in_memory().unwrap()).unwrap();
         let l = Lesson {
+            title_nl: None,
             id: "1".into(),
             title: "Titel".into(),
             source: "Test".into(),
@@ -260,6 +282,77 @@ mod tests {
         assert_eq!(restored.progress.last_sentence, 0);
         assert!(restored.progress.completed);
         assert!(store.archive("missing", true).is_err());
+    }
+    #[test]
+    fn title_translation_survives_restart_and_preserves_latest_lesson() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("titles.sqlite");
+        {
+            let store = Store::open(&path).unwrap();
+            store.save(&legacy_lesson()).unwrap();
+            assert!(store.get("legacy").unwrap().title_nl.is_none());
+            store
+                .progress(
+                    "legacy",
+                    Progress {
+                        last_sentence: 0,
+                        completed: false,
+                    },
+                )
+                .unwrap();
+            store.archive("legacy", true).unwrap();
+            store
+                .save_language_notes("legacy", test_notes("Hej"))
+                .unwrap();
+            store
+                .save_grammar_notes("legacy", test_notes("Hej"))
+                .unwrap();
+            let before = store.get("legacy").unwrap();
+            let updated = store
+                .save_title_translation("legacy", "Oude titel vertaald".into())
+                .unwrap();
+            let mut expected = serde_json::to_value(&before).unwrap();
+            expected["titleNl"] = serde_json::json!("Oude titel vertaald");
+            assert_eq!(serde_json::to_value(&updated).unwrap(), expected);
+            assert_eq!(
+                store
+                    .save_title_translation("legacy", "Niet overschrijven".into())
+                    .unwrap()
+                    .title_nl
+                    .as_deref(),
+                Some("Oude titel vertaald")
+            );
+        }
+        let store = Store::open(&path).unwrap();
+        let lesson = store.get("legacy").unwrap();
+        assert_eq!(lesson.title_nl.as_deref(), Some("Oude titel vertaald"));
+        assert_eq!(lesson.progress.last_sentence, 0);
+        assert!(lesson.progress.completed);
+        assert!(lesson.archived_at.is_some());
+        assert_eq!(lesson.grammar_notes.len(), 5);
+        assert_eq!(lesson.language_notes.len(), 5);
+    }
+    #[test]
+    fn invalid_title_and_failed_write_preserve_the_lesson() {
+        let store = Store::init(Connection::open_in_memory().unwrap()).unwrap();
+        store.save(&legacy_lesson()).unwrap();
+        for invalid in [" ".to_string(), "x".repeat(2001)] {
+            assert!(store.save_title_translation("legacy", invalid).is_err());
+        }
+        store.0.lock().unwrap().execute_batch("CREATE TRIGGER reject_update BEFORE UPDATE ON lessons BEGIN SELECT RAISE(ABORT, 'read-only'); END;").unwrap();
+        assert!(store
+            .save_title_translation("legacy", "Vertaling".into())
+            .is_err());
+        assert!(store.get("legacy").unwrap().title_nl.is_none());
+        store
+            .0
+            .lock()
+            .unwrap()
+            .execute_batch("DROP TRIGGER reject_update;")
+            .unwrap();
+        assert!(store
+            .save_title_translation("legacy", "Vertaling".into())
+            .is_ok());
     }
     #[test]
     fn failed_archive_write_keeps_original_lesson() {
