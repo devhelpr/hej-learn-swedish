@@ -105,12 +105,24 @@ describe("desktop player workflows", () => {
     fireEvent.click(screen.getByRole("button", { name: "▶ Afspelen" }));
     await waitFor(() => expect(calls()).toHaveLength(1));
     await emit("started", calls()[0].id);
-    await emit("finished", calls()[0].id);
-    fireEvent.click(screen.getByRole("button", { name: "Ⅱ Pauzeren" }));
-    expect(screen.getByRole("button", { name: "▶ Hervatten" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "▶ Hervatten" }));
-    await waitFor(() => expect(calls()).toHaveLength(2));
-    expect(calls()[1].text).toBe(demo.sentences[1].sv);
+    // Keep the 30 ms gap open regardless of CI runner speed.
+    vi.useFakeTimers();
+    try {
+      await emit("finished", calls()[0].id);
+      act(() => vi.advanceTimersByTime(10));
+      fireEvent.click(screen.getByRole("button", { name: "Ⅱ Pauzeren" }));
+      expect(screen.getByRole("button", { name: "▶ Hervatten" })).toBeTruthy();
+      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+      expect(calls()).toHaveLength(1);
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "▶ Hervatten" }));
+      });
+      expect(calls()).toHaveLength(2);
+      expect(calls()[1].text).toBe(demo.sentences[1].sv);
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
   it("stops playback on navigation and ignores its late completion", async () => {
     await setup();
