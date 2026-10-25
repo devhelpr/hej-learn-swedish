@@ -2,6 +2,13 @@
 
 Nederlandstalige Tauri 2-desktopapp voor Windows 11 x64 en macOS 13+ (Intel/Apple Silicon). Nieuws van SVT landelijk en Småland wordt via je eigen Codex CLI een A1-, A2- of B1-oefening. Zweedse zinnen worden lokaal uitgesproken: met systeemstemmen of, op Windows, downloadbare Alma-, NST- en Supertonic-stemmen. Nederlandse vertalingen blijven tijdens het afspelen zichtbaar en kunnen worden verborgen.
 
+## Nieuw in 1.4.0
+
+- Windows controleert bij het opstarten automatisch op nieuwe stabiele versies via GitHub Releases. Kies **Update installeren** of **Later**.
+- Updates tonen downloadvoortgang, worden met de Tauri-updatesleutel gecontroleerd en starten Hej na installatie opnieuw. Bij fouten kun je opnieuw proberen.
+- De releasepipeline publiceert ondertekende Windows-installers en `latest.json`. De NSIS-installer installeert per gebruiker; een betaald Windows-codecertificaat is niet nodig.
+- Bestaande versies zonder updater moeten eenmalig handmatig worden bijgewerkt via de NSIS **`-setup.exe`**.
+
 ## Nieuw in 1.3.2
 
 - Ronde **⏮**-knop om direct vanaf de Zweedse titel opnieuw te luisteren.
@@ -128,15 +135,15 @@ Windows-acceptatie vóór brede distributie: installeer een NSIS-release met upd
 
 ## Releasepipeline op GitHub starten
 
-De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v1.3.2`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
+De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v1.4.0`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
 
-1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `1.3.2` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
+1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `1.4.0` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
 
    ```sh
-   npm version 1.3.2 --no-git-tag-version
+   npm version 1.4.0 --no-git-tag-version
    ```
 
-2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `1.3.2`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
+2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `1.4.0`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
 
    ```sh
    npm run native
@@ -150,20 +157,20 @@ De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je 
 
    ```sh
    git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock README.md
-   git commit -m "Release v1.3.2"
-   git tag -a v1.3.2 -m "Hej v1.3.2"
+   git commit -m "Release v1.4.0"
+   git tag -a v1.4.0 -m "Hej v1.4.0"
    git push origin main
-   git push origin v1.3.2
+   git push origin v1.4.0
    ```
 
-4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v1.3.2`. Na een geslaagde build download je de installers onder **Artifacts**:
+4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v1.4.0`. Na een geslaagde build download je de installers onder **Artifacts**:
 
    | Artifact | Platform |
    | --- | --- |
    | `hej-windows-2022` | Windows x64 (`.exe` en `.msi`) |
    | `hej-macos-15` | macOS Apple Silicon (`.dmg`) |
 
-Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes, de losse Windows `.exe`/`.msi`-installers, macOS `.dmg`, Windows `.sig`-handtekeningen en `latest.json`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle installers en updatebestanden aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.3.2-rc.1`, worden als prerelease gepubliceerd.
+Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes, de losse Windows `.exe`/`.msi`-installers, macOS `.dmg`, Windows `.sig`-handtekeningen en `latest.json`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle installers en updatebestanden aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.4.0-rc.1`, worden als prerelease gepubliceerd.
 
 Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken. Een uitvoering op een branch maakt alleen artifacts; een uitvoering op een `v*`-tag publiceert ook de release. Het releasejob gebruikt het ingebouwde GitHub Actions-token met `contents: write`; een apart token is niet nodig.
 
