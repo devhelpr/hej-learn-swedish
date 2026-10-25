@@ -138,6 +138,8 @@ fn main() {
         .manage(Speech::new())
         .manage(voices::Downloads::default())
         .setup(|app| {
+            #[cfg(windows)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
             app.manage(Store::open(&dir.join("hej.sqlite")).map_err(std::io::Error::other)?);

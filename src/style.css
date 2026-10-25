@@ -1177,3 +1177,12 @@ footer {
 .title-translation {
   color: var(--muted, #5e6b63);
 }
+.app-updater {
+  display: grid;
+  gap: 10px;
+}
+.update-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

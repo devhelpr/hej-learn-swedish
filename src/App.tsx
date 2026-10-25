@@ -15,6 +15,7 @@ import LanguageNotes from "./LanguageNotes";
 import ExerciseQuestion from "./ExerciseQuestion";
 import LessonBrowser from "./LessonBrowser";
 import DownloadableVoices from "./DownloadableVoices";
+import AppUpdater from "./AppUpdater";
 import { emptyFilter, type LessonFilter } from "./lesson-browser";
 import { acceptsEvent, resumeIndex, type PlayerState } from "./player";
 
@@ -746,6 +747,13 @@ export default function App() {
         </div>
       </aside>
       <main>
+        <AppUpdater
+          enabled={
+            desktop &&
+            navigator.userAgent.includes("Windows") &&
+            !import.meta.env.DEV
+          }
+        />
         <header>
           <span>ZWEEDS LEREN MET NIEUWS</span>
           <div

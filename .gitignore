@@ -29,6 +29,7 @@ src-tauri/native/windows/obj/
 *.p12
 *.pfx
 *.key
+.secrets/
 
 # OS and editor files
 .DS_Store

@@ -2,6 +2,23 @@
   "bundle": {
     "resources": {
       "target/voice-resources/": "speech-data/"
+    },
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDA4OUE4QkZGMDIxNUU4NzAKUldSdzZCVUMvNHVhQ0duQ05wRkxJV0hLSUNaVmtyek5yZE05TVZpSm5JczBBSW1HaXpWR3diR1MK",
+      "endpoints": [
+        "https://github.com/devhelpr/hej-learn-swedish/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

@@ -32,11 +32,23 @@ jobs:
         with:
           python-version: '3.11'
       - run: npm ci
+      - name: Require Windows updater signing key
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) {
+            throw 'Configure the TAURI_SIGNING_PRIVATE_KEY repository secret before building Windows installers.'
+          }
       - run: npm run build
       - run: npm test
       - run: npm run native
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - run: npm run package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.os == 'Windows' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       - uses: actions/download-artifact@v4
         if: runner.os == 'Windows'
         with:
@@ -52,6 +64,8 @@ jobs:
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*.sig
+            src-tauri/target/release/bundle/msi/*.sig
           if-no-files-found: error
   release:
     name: Publish installers
@@ -63,6 +77,9 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: actions/download-artifact@v4
         with:
           pattern: hej-*
@@ -71,6 +88,10 @@ jobs:
         with:
           name: voice-packages
           path: voice-packages
+      - name: Generate signed Windows update manifest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/create-update-manifest.mjs installers "$GITHUB_REPOSITORY" "$RELEASE_TAG" latest.json
       - name: Publish immutable voice packages
         shell: bash
         env:
@@ -105,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           assets=()
-          for extension in exe msi dmg; do
+          for extension in exe msi dmg sig; do
             found=false
             while IFS= read -r -d '' installer; do
               assets+=("$installer")
@@ -116,6 +137,7 @@ jobs:
               exit 1
             fi
           done
+          assets+=(latest.json)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
           else

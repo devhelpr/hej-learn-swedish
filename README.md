@@ -106,6 +106,26 @@ Het packaging-script bouwt via Tauri de macOS `.app` en maakt een DMG met `hdiut
 
 De eerste release is niet publiek ondertekend of genotariseerd. De `.gitignore` sluit dependencies, buildoutput, native helpers, databases, logs en lokale credentials uit. `package-lock.json` en `src-tauri/Cargo.lock` horen wel in Git.
 
+### Automatische Windows-updates
+
+De Windows-release controleert bij het opstarten via de officiële [Tauri Updater](https://v2.tauri.app/plugin/updater/) op een nieuwere stabiele versie in [GitHub Releases](https://github.com/devhelpr/hej-learn-swedish/releases). De gebruiker kiest **Update installeren** of **Later**. Tijdens downloaden verschijnt voortgang; na verificatie start de installer en sluit Hej. De NSIS-installer start Hej vervolgens opnieuw. Een mislukte updatecontrole blokkeert oefenen niet; opnieuw proberen is mogelijk. Browserpreview, ontwikkelmodus en macOS voeren deze controle niet uit.
+
+Gebruik de NSIS **`-setup.exe`** voor installatie per gebruiker (`currentUser`), zodat normaal geen administratorrechten nodig zijn. Updates gebruiken dezelfde NSIS-installatievorm met een voortgangsvenster (`passive`). De losse MSI blijft beschikbaar voor beheerde installatie. Stap bij een bestaande MSI-installatie eerst handmatig over naar NSIS voordat je deze updater gebruikt. Versies zonder updater moeten eenmalig handmatig naar een release met updater worden bijgewerkt.
+
+De publieke updatesleutel staat in `src-tauri/tauri.windows.conf.json`. De private sleutel is op 25 oktober 2026 ingesteld als Actions-secret **`TAURI_SIGNING_PRIVATE_KEY`** in `devhelpr/hej-learn-swedish`. De lokale kopie staat in de genegeerde `.secrets/hej-updater.key`; bewaar hiervan ook een veilige backup. Deze sleutel heeft geen wachtwoord; vertrouwelijkheid berust op GitHub Secrets en de lokale bestandsrechten. Genereer voor volgende releases geen nieuwe sleutel: geïnstalleerde apps vertrouwen de bestaande publieke sleutel. Bij gebruik van een sleutel met wachtwoord voeg je ook `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` toe aan de repository-secrets.
+
+Voor een lokale Windows-releasebuild stel je de sleutel in vóór `npm run package`, bijvoorbeeld in PowerShell:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = (Resolve-Path '.secrets/hej-updater.key').Path
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
+npm run package
+```
+
+Tauri maakt `.sig`-bestanden voor de Windows-installers. Het releasejob genereert `latest.json` met de Windows x64 NSIS-download en de inhoud van de bijbehorende handtekening. Ontbrekende handtekeningen, dubbele NSIS-installers of afwijkende tag/npm/Tauri/Cargo-versies laten de publicatie falen. Alle bestanden worden eerst naar een draft release geüpload; daarna wordt de release gepubliceerd. Prereleases komen niet via het endpoint voor de nieuwste stabiele release binnen. Er is geen betaald Windows-codecertificaat ingesteld; Windows kan dus nog een SmartScreen-waarschuwing tonen. Tauri-updateondertekening staat los van Windows-codeondertekening.
+
+Windows-acceptatie vóór brede distributie: installeer een NSIS-release met updater als gewone gebruiker, publiceer een hogere testversie, controleer de melding en **Later**, en voer daarna de update uit. Controleer herstart, behoud van lessen/instellingen/stemmen, foutafhandeling zonder internet en de weigering van een beschadigd of verkeerd ondertekend updatebestand. Deze installatiestappen moeten op Windows worden uitgevoerd.
+
 ## Releasepipeline op GitHub starten
 
 De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v1.3.2`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
@@ -143,7 +163,7 @@ De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je 
    | `hej-windows-2022` | Windows x64 (`.exe` en `.msi`) |
    | `hej-macos-15` | macOS Apple Silicon (`.dmg`) |
 
-Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes en de losse Windows `.exe`/`.msi`-installers en macOS `.dmg`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle drie bestandstypen aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.3.2-rc.1`, worden als prerelease gepubliceerd.
+Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes, de losse Windows `.exe`/`.msi`-installers, macOS `.dmg`, Windows `.sig`-handtekeningen en `latest.json`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle installers en updatebestanden aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.3.2-rc.1`, worden als prerelease gepubliceerd.
 
 Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken. Een uitvoering op een branch maakt alleen artifacts; een uitvoering op een `v*`-tag publiceert ook de release. Het releasejob gebruikt het ingebouwde GitHub Actions-token met `contents: write`; een apart token is niet nodig.
 
