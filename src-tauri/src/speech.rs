@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 use std::{
     io::{BufRead, BufReader, Write},
-    process::{Child, ChildStdin, Command, Stdio},
+    process::{Child, ChildStdin, Stdio},
     sync::{Arc, Mutex},
 };
 use tauri::{Emitter, Manager};
@@ -44,7 +44,7 @@ impl Speech {
                         if cfg!(windows) { ".exe" } else { "" }
                     ))
             };
-            let mut command = Command::new(helper);
+            let mut command = crate::process::background(helper);
             if cfg!(windows) {
                 let resources = app
                     .path()
@@ -60,11 +60,6 @@ impl Speech {
                 command
                     .env("HEJ_VOICE_DIR", crate::voices::root(app)?)
                     .env("HEJ_SPEECH_DATA", resources);
-                #[cfg(windows)]
-                {
-                    use std::os::windows::process::CommandExt;
-                    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
-                }
             }
             let mut child=command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|_|"De native spraakhulp kon niet starten. Herinstalleer de app of voer npm run native uit.".to_string())?;
             let stdout = child.stdout.take().unwrap();

@@ -253,7 +253,7 @@ async fn terminate(child: &mut tokio::process::Child) {
     }
     #[cfg(windows)]
     if let Some(id) = child.id() {
-        let _ = tokio::process::Command::new("taskkill")
+        let _ = crate::process::background_async("taskkill.exe")
             .args(["/PID", &id.to_string(), "/T", "/F"])
             .output()
             .await;
@@ -275,7 +275,7 @@ async fn execute_json(
     let schema = dir.path().join("lesson.schema.json");
     let output = dir.path().join("lesson.json");
     std::fs::write(&schema, schema_json).map_err(|e| e.to_string())?;
-    let mut command = tokio::process::Command::new(exe);
+    let mut command = crate::process::background_async(exe);
     command
         .args([
             "exec",

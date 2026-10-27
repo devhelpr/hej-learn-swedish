@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import struct
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,17 @@ import zipfile
 root = Path(__file__).resolve().parent.parent
 catalog = json.loads((root / "src-tauri/voice-catalog.json").read_text())
 helper = Path(sys.argv[1]).resolve()
+# The published helper itself must use the Windows GUI subsystem, so even a
+# launcher without CREATE_NO_WINDOW cannot flash a console or steal focus.
+with helper.open("rb") as executable:
+    assert executable.read(2) == b"MZ", "Expected a Windows speech helper"
+    executable.seek(0x3c)
+    pe_offset = struct.unpack("<I", executable.read(4))[0]
+    executable.seek(pe_offset)
+    assert executable.read(4) == b"PE\0\0", "Invalid Windows speech helper"
+    executable.seek(pe_offset + 24 + 68)
+    assert struct.unpack("<H", executable.read(2))[0] == 2, "Speech helper must not create a console"
+print("Speech helper Windows GUI subsystem: OK", flush=True)
 # Exercise redirected stdin/stdout with real UTF-8 bytes, matching Rust's
 # serde_json output. Escaped JSON alone would hide a Windows code-page bug.
 # Match the app's CREATE_NO_WINDOW launch, including the code-page fallback.
