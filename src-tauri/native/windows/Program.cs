@@ -160,10 +160,13 @@ internal class Program {
         finally { Synthesis.Release(); }
     }
     static int Main(string[] args) {
-        // Rust writes UTF-8 JSON to a redirected pipe. Windows console defaults
-        // can use an OEM/ANSI code page, corrupting Swedish letters before TTS.
-        Console.InputEncoding = new UTF8Encoding(false, true);
-        Console.OutputEncoding = new UTF8Encoding(false, true);
+        // This WinExe has redirected pipes but no console. Setting the console
+        // encodings calls SetConsoleCP/SetConsoleOutputCP, which can throw without
+        // a console. Decode/encode the pipes directly instead, without a BOM.
+        var utf8 = new UTF8Encoding(false, true);
+        Console.SetIn(new StreamReader(Console.OpenStandardInput(), utf8, detectEncodingFromByteOrderMarks: false));
+        Console.SetOut(new StreamWriter(Console.OpenStandardOutput(), utf8) { AutoFlush = true });
+        Console.SetError(new StreamWriter(Console.OpenStandardError(), utf8) { AutoFlush = true });
         if (args.SequenceEqual(new[] { "--verify-encoding" })) {
             using var doc = JsonDocument.Parse(Console.ReadLine() ?? "");
             Console.WriteLine(doc.RootElement.GetProperty("text").GetString());
