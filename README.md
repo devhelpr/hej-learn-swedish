@@ -2,6 +2,11 @@
 
 Nederlandstalige Tauri 2-desktopapp voor Windows 11 x64 en macOS 13+ (Intel/Apple Silicon). Nieuws van SVT landelijk en Småland wordt via je eigen Codex CLI een A1-, A2- of B1-oefening. Zweedse zinnen worden lokaal uitgesproken: met systeemstemmen of, op Windows, downloadbare Alma-, NST- en Supertonic-stemmen. Nederlandse vertalingen blijven tijdens het afspelen zichtbaar en kunnen worden verborgen.
 
+## Nieuw in 1.4.2
+
+- Oefenen en Archief tonen oefeningen direct in de lijst voor het gekozen taalniveau. Open een oefening via de titel of klap de bijbehorende zinnen uit.
+- Op Windows starten Codex, de spraakhulp en het annuleringsproces zonder consolevenster. De spraakhulp is ook als Windows-app zonder console gebouwd.
+
 ## Nieuw in 1.4.1
 
 - De test voor pauzeren tussen twee zinnen gebruikt nu een gecontroleerde testklok. Dit voorkomt een timingafhankelijke testfout op tragere CI-runners, zoals bij de macOS-build.
@@ -55,7 +60,7 @@ De Windows-helper normaliseert Tauri-paden met een `\\?\`-prefix naar gewone sch
 - Maak een oefening: circa 12 zinparen. Generatie is annuleerbaar en stopt na drie minuten.
 - Speel de hele les, de titel of één zin af. **⏮ Naar het begin** begint direct bij de Zweedse titel en gaat daarna naar zin 1 wanneer **Automatisch doorgaan** aanstaat. De titel heeft ook een eigen luisterknop; pauze, hervatten, stoppen, vorige/volgende en herhalen werken ook op de titel. Onderbreken vervangt de lopende zin; oude eindmeldingen kunnen nooit de volgende zin starten.
 - Nieuwe oefeningen krijgen een Nederlandse vertaling van de oorspronkelijke titel. Die volgt de instelling **Nederlandse vertaling** en wordt lokaal bewaard. Bij oudere oefeningen kun je **Titelvertaling toevoegen** gebruiken, annuleren en opnieuw proberen zonder de oefening opnieuw te maken. Alleen de Zweedse titel wordt uitgesproken.
-- Oefenen groepeert lessen als nieuwsbericht → niveauvariant → zinnen. Elke nieuwe oefening krijgt de oorspronkelijke nieuwstitel; voor geplakte tekst vul je zelf een titel in. Een ander taalniveau maakt een aparte variant, zonder bestaande lessen te overschrijven.
+- Oefenen en Archief tonen per taalniveau een directe lijst met oefeningen; klap een oefening uit om de zinnen te bekijken. Elke nieuwe oefening krijgt de oorspronkelijke nieuwstitel; voor geplakte tekst vul je zelf een titel in. Een ander taalniveau maakt een aparte variant, zonder bestaande lessen te overschrijven.
 - Wissel tussen **Tekst** (doorlopende oefentekst met gemarkeerde zin en Nederlandse ondertiteling) en **Losse zinnen** (zinparen met eigen afspeelknoppen). Beide gebruiken dezelfde speler en hervatpositie.
 - Het tabblad **Grammatica** licht vijf verschillende grammatica-elementen uit de oefening toe in het Nederlands, passend bij A1/A2/B1. Elk punt toont een gemarkeerd Zweeds fragment en de vertaling. Nieuwe oefeningen krijgen deze uitleg meteen; bij bestaande oefeningen gebruik je **Grammatica-uitleg toevoegen**. De uitleg wordt apart opgeslagen en blijft offline beschikbaar.
 - Het tabblad **Bijzonderheden taal** toont vijf uitlegpunten in het Nederlands, met een letterlijk Zweeds fragment, de volledige voorbeeldzin en vertaling. Nieuwe oefeningen krijgen deze uitleg meteen; bij bestaande oefeningen voeg je haar zelf toe met **Taalbijzonderheden toevoegen**. De uitleg past bij A1/A2/B1 en blijft na opslaan offline beschikbaar.
@@ -141,15 +146,15 @@ Windows-acceptatie vóór brede distributie: installeer een NSIS-release met upd
 
 ## Releasepipeline op GitHub starten
 
-De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v1.4.1`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
+De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je een tag met prefix `v` naar GitHub pusht, bijvoorbeeld `v1.4.2`, of wanneer je hem handmatig start. Gewone branch-pushes en pull requests starten deze releasepipeline niet. De commit waarnaar de tag verwijst moet deze workflow bevatten. GitHub Actions moet ingeschakeld zijn voor de repository.
 
-1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `1.4.1` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
+1. Kies een nieuw versienummer. Gebruik hieronder overal dezelfde versie; `1.4.2` is een voorbeeld. Werk de npm-versie en bijbehorende lockfile bij:
 
    ```sh
-   npm version 1.4.1 --no-git-tag-version
+   npm version 1.4.2 --no-git-tag-version
    ```
 
-2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `1.4.1`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
+2. Zet ook `version` in `src-tauri/tauri.conf.json` en de package-versie in `src-tauri/Cargo.toml` op `1.4.2`. De tag zelf wijzigt deze bestanden niet. Werk de Rust-lockfile bij en controleer de build:
 
    ```sh
    npm run native
@@ -163,20 +168,20 @@ De workflow **Desktop builds** (`.github/workflows/desktop.yml`) start zodra je 
 
    ```sh
    git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock README.md
-   git commit -m "Release v1.4.1"
-   git tag -a v1.4.1 -m "Hej v1.4.1"
+   git commit -m "Release v1.4.2"
+   git tag -a v1.4.2 -m "Hej v1.4.2"
    git push origin main
-   git push origin v1.4.1
+   git push origin v1.4.2
    ```
 
-4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v1.4.1`. Na een geslaagde build download je de installers onder **Artifacts**:
+4. Open op GitHub **Actions → Desktop builds** en kies de run voor `v1.4.2`. Na een geslaagde build download je de installers onder **Artifacts**:
 
    | Artifact | Platform |
    | --- | --- |
    | `hej-windows-2022` | Windows x64 (`.exe` en `.msi`) |
    | `hej-macos-15` | macOS Apple Silicon (`.dmg`) |
 
-Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes, de losse Windows `.exe`/`.msi`-installers, macOS `.dmg`, Windows `.sig`-handtekeningen en `latest.json`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle installers en updatebestanden aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.4.1-rc.1`, worden als prerelease gepubliceerd.
+Na succesvolle builds voor beide platformen publiceert de pipeline automatisch een **GitHub Release** voor de versietag, met gegenereerde release notes, de losse Windows `.exe`/`.msi`-installers, macOS `.dmg`, Windows `.sig`-handtekeningen en `latest.json`. Onder **Releases** kun je deze bestanden direct downloaden, zonder artifact-ZIP uit te pakken. De release wordt pas gepubliceerd als alle installers en updatebestanden aanwezig en geüpload zijn. Tags met een suffix, zoals `v1.4.2-rc.1`, worden als prerelease gepubliceerd.
 
 Voor een gewone handmatige build kun je **Actions → Desktop builds → Run workflow** gebruiken. Een uitvoering op een branch maakt alleen artifacts; een uitvoering op een `v*`-tag publiceert ook de release. Het releasejob gebruikt het ingebouwde GitHub Actions-token met `contents: write`; een apart token is niet nodig.
 
