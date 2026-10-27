@@ -861,15 +861,6 @@ footer {
   border-top: 1px solid var(--line);
   padding: 10px 0;
 }
-.tree-heading {
-  border: 0;
-  background: transparent;
-  text-align: left;
-  font-weight: 650;
-  width: 100%;
-  padding: 8px 0;
-  overflow-wrap: anywhere;
-}
 .tree-variant {
   display: flex;
   align-items: center;
@@ -890,6 +881,8 @@ footer {
   border: 0;
   background: transparent;
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
   text-align: left;
   font-size: 0.8rem;
   padding: 4px;

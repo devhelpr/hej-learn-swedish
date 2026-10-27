@@ -167,6 +167,54 @@ describe("exercise workspace", () => {
     );
     await screen.findByRole("checkbox", { name: "Gedaan" });
   }
+  it.each([false, true])(
+    "opens an exercise directly at the global level (archived: %s)",
+    async (archived) => {
+      const previous = backend.invoke.getMockImplementation()!;
+      backend.invoke.mockImplementation(async (cmd, args) => {
+        if (cmd === "list_lessons")
+          return (["A1", "A2"] as const).map((level) => ({
+            ...demo,
+            id: level,
+            title: "Nieuwsbericht",
+            sourceGroupId: "shared-source",
+            level,
+            archivedAt: archived ? "2026-10-11T12:00:00Z" : null,
+            progress: { lastSentence: 1, completed: false },
+            sentences: demo.sentences.map((pair) => ({
+              ...pair,
+              nl: `${level}: ${pair.nl}`,
+            })),
+          }));
+        return previous(cmd, args);
+      });
+      await setup();
+      if (archived)
+        fireEvent.click(screen.getByRole("button", { name: "Archief" }));
+      const tree = await screen.findByLabelText(
+        archived ? "Oefeningenarchief" : "Actieve oefeningen",
+      );
+      for (const level of ["A1", "A2"]) {
+        fireEvent.click(screen.getByRole("button", { name: level }));
+        const exercise = within(tree).getByRole("button", {
+          name: /^Nieuwsbericht/,
+        });
+        fireEvent.click(exercise);
+        await waitFor(() =>
+          expect(
+            screen.getByLabelText("Vertaling actieve zin").textContent,
+          ).toContain(`${level}: ${demo.sentences[1].nl}`),
+        );
+        expect(exercise.getAttribute("aria-current")).toBe("true");
+        expect(
+          within(tree).queryByRole("button", {
+            name: demo.sentences[1].sv,
+          }),
+        ).toBeNull();
+      }
+      expect(calls()).toHaveLength(0);
+    },
+  );
   it("switches reading views without interrupting playback and keeps subtitles aligned", async () => {
     await openSaved();
     const subtitle = screen.getByLabelText("Vertaling actieve zin");
